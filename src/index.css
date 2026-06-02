@@ -1,0 +1,248 @@
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 96.5%;
+    --foreground: 0 0% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 211 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 240 5% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 240 5% 96%;
+    --accent-foreground: 0 0% 10%;
+
+    --destructive: 0 85% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 95% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 0 0% 90%;
+    --input: 240 5% 96.5%;
+    --input-hover: 240 5% 93%;
+    --ring: 211 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* Glassmorphism */
+    --glass-bg: 0 0% 100% / 0.72;
+    --glass-border: 0 0% 100% / 0.5;
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
+
+    /* Apple blobs */
+    --blob-1: 211 100% 65%;
+    --blob-2: 280 80% 70%;
+    --blob-3: 160 60% 65%;
+    --blob-4: 32 90% 70%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 210 40% 96%;
+    --card: 220 20% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 220 20% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 211 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 220 16% 16%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 220 16% 16%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 55%;
+    --warning-foreground: 0 0% 100%;
+    --border: 220 16% 18%;
+    --input: 220 16% 16%;
+    --input-hover: 220 16% 20%;
+    --ring: 211 100% 50%;
+
+    --glass-bg: 220 20% 11% / 0.8;
+    --glass-border: 220 16% 20% / 0.5;
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+
+    --blob-1: 211 100% 35%;
+    --blob-2: 280 60% 40%;
+    --blob-3: 160 40% 35%;
+    --blob-4: 32 70% 40%;
+
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 211 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 16% 16%;
+    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-border: 220 16% 18%;
+    --sidebar-ring: 211 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: hsla(var(--glass-bg));
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid hsla(var(--glass-border));
+    box-shadow: var(--glass-shadow);
+    border-radius: 20px;
+  }
+
+  .apple-input {
+    @apply h-12 w-full rounded-xl bg-input px-4 text-foreground placeholder:text-muted-foreground transition-all duration-200 outline-none;
+  }
+  .apple-input:hover {
+    background: hsl(var(--input-hover));
+  }
+  .apple-input:focus {
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25);
+    background: hsl(var(--card));
+  }
+  .apple-input.input-error {
+    box-shadow: 0 0 0 2px hsl(var(--destructive) / 0.5);
+  }
+
+  .apple-btn {
+    @apply h-12 w-full rounded-xl font-semibold text-primary-foreground transition-all duration-200;
+    background: hsl(var(--primary));
+  }
+  .apple-btn:hover {
+    filter: brightness(1.08);
+  }
+  .apple-btn:active {
+    transform: scale(0.97);
+  }
+  .apple-btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+    transform: none;
+    filter: none;
+  }
+
+  .apple-btn-secondary {
+    @apply h-12 w-full rounded-xl font-semibold transition-all duration-200;
+    background: hsl(var(--secondary));
+    color: hsl(var(--primary));
+  }
+  .apple-btn-secondary:hover {
+    filter: brightness(0.97);
+  }
+  .apple-btn-secondary:active {
+    transform: scale(0.97);
+  }
+
+  .link-animated {
+    @apply relative text-muted-foreground transition-colors duration-200;
+  }
+  .link-animated::after {
+    content: '';
+    @apply absolute bottom-0 left-0 w-full h-px bg-primary origin-bottom-right transition-transform duration-300 scale-x-0;
+  }
+  .link-animated:hover {
+    color: hsl(var(--primary));
+  }
+  .link-animated:hover::after {
+    @apply origin-bottom-left scale-x-100;
+  }
+
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.5;
+    will-change: transform;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes float1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.95); }
+}
+@keyframes float2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-25px, 25px) scale(1.03); }
+  66% { transform: translate(15px, -30px) scale(0.97); }
+}
+@keyframes float3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, 20px) scale(1.04); }
+}
+
+@keyframes checkDraw {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-float1 { animation: float1 12s ease-in-out infinite; }
+.animate-float2 { animation: float2 15s ease-in-out infinite; }
+.animate-float3 { animation: float3 10s ease-in-out infinite; }
+
+.animate-check-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: checkDraw 0.5s ease-out 0.3s forwards;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
