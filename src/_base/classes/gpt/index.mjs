@@ -6,7 +6,7 @@ const gpt = async () => {
   const grade = 6;
   const topic = `Biologia`;
   try {
-    const apiKey = `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`;
+    const apiKey = ``;
     if (!apiKey) throw new Error('Not found api key');
 
     const openai = new OpenAI({ apiKey });
