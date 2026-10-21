@@ -8,20 +8,52 @@ import {
   ThumbsUp,
   Heart,
   Star,
-  HandMetal,
+  Sparkles,
   MessageCircle,
   ChevronLeft,
   ChevronRight,
   Reply,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
-import { initialPosts, initialStories, Post, Story, Reaction, Comment } from './comunidadeData';
+import { Story } from './comunidadeData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useUser } from '@/hooks/useUser';
+import { IHubCommunityPost } from '@/_base/interfaces/community';
+import { listCommunityPosts, createCommunityPost, deleteCommunityPost, updateCommunityPostReaction } from '@/_base/services/community';
+import { getPresignedUrl, uploadFile } from '@/_base/services/upload';
+import { toast } from 'sonner';
 
-const reactionIcons: Record<string, { icon: typeof ThumbsUp; color: string }> = {
-  like: { icon: ThumbsUp, color: 'text-blue-500' },
-  heart: { icon: Heart, color: 'text-red-500' },
-  star: { icon: Star, color: 'text-yellow-500' },
-  clap: { icon: HandMetal, color: 'text-green-500' },
+interface PostDisplay {
+  id: string;
+  author: string;
+  avatar: string;
+  institution: string;
+  text: string;
+  images: string[];
+  timeAgo: string;
+  reactions: { type: string; count: number; reacted: boolean }[];
+  comments: CommentDisplay[];
+  userId?: string;
+}
+
+interface CommentDisplay {
+  id: string;
+  author: string;
+  avatar: string;
+  institution: string;
+  text: string;
+  timeAgo: string;
+  reactions: { type: string; count: number; reacted: boolean }[];
+  replies: CommentDisplay[];
+  userId?: string;
+}
+
+const reactionIcons: Record<string, { icon: typeof ThumbsUp; color: string; label: string }> = {
+  like: { icon: ThumbsUp, color: 'text-blue-500', label: 'Curtir' },
+  heart: { icon: Heart, color: 'text-red-500', label: 'Amei' },
+  star: { icon: Star, color: 'text-yellow-500', label: 'Estrela' },
+  light: { icon: Sparkles, color: 'text-amber-500', label: 'Inspirador' },
 };
 
 const getInitials = (name: string) =>
@@ -37,6 +69,21 @@ const getAvatarColor = (name: string) => {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
+};
+
+const formatTimeAgo = (dateStr: string | Date) => {
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'agora';
+    if (minutes < 60) return `há ${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `há ${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `há ${days}d`;
+  } catch {
+    return 'recentemente';
+  }
 };
 
 const StoriesBar = ({
@@ -129,10 +176,10 @@ const StoriesBar = ({
   );
 };
 
-const ReactionBar = ({ reactions, onReact }: { reactions: Reaction[]; onReact: (type: string) => void }) => (
+const ReactionBar = ({ reactions, onReact }: { reactions: { type: string; count: number; reacted: boolean }[]; onReact: (type: string) => void }) => (
   <div className="flex max-w-full flex-wrap items-center gap-1">
     {reactions.map((r) => {
-      const cfg = reactionIcons[r.type];
+      const cfg = reactionIcons[r.type] || reactionIcons.like;
       const Icon = cfg.icon;
       return (
         <button
@@ -152,12 +199,16 @@ const ReactionBar = ({ reactions, onReact }: { reactions: Reaction[]; onReact: (
 
 const CommentItem = ({
   comment,
+  currentUserId,
   onReact,
   onReply,
+  onDelete,
 }: {
-  comment: Comment;
+  comment: CommentDisplay;
+  currentUserId?: string;
   onReact: (id: string, type: string) => void;
   onReply: (id: string, text: string) => void;
+  onDelete?: (id: string) => void;
 }) => {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -173,8 +224,19 @@ const CommentItem = ({
         </div>
 
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="glass-card !rounded-2xl overflow-hidden p-3">
-            <p className="truncate text-sm font-semibold text-primary">{comment.author}</p>
+          <div className="glass-card !rounded-2xl overflow-hidden p-3 relative group">
+            <div className="flex items-center justify-between">
+              <p className="truncate text-sm font-semibold text-primary">{comment.author}</p>
+              {onDelete && comment.userId === currentUserId && (
+                <button
+                  onClick={() => onDelete(comment.id)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive"
+                  title="Excluir resposta"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <p className="truncate text-xs text-muted-foreground">{comment.institution}</p>
             <p className="mt-1.5 break-words text-sm text-foreground">{comment.text}</p>
           </div>
@@ -227,7 +289,17 @@ const CommentItem = ({
               <button onClick={() => setShowReplies(!showReplies)} className="text-xs text-muted-foreground hover:text-foreground">
                 {showReplies ? '▾' : '▸'} {comment.replies.length} resposta{comment.replies.length > 1 ? 's' : ''}
               </button>
-              {showReplies && comment.replies.map((r) => <CommentItem key={r.id} comment={r} onReact={onReact} onReply={onReply} />)}
+              {showReplies &&
+                comment.replies.map((r) => (
+                  <CommentItem
+                    key={r.id}
+                    comment={r}
+                    currentUserId={currentUserId}
+                    onReact={onReact}
+                    onReply={onReply}
+                    onDelete={onDelete}
+                  />
+                ))}
             </div>
           )}
         </div>
@@ -238,16 +310,22 @@ const CommentItem = ({
 
 const PostCard = ({
   post,
+  currentUserId,
   onReact,
   onComment,
   onCommentReact,
   onCommentReply,
+  onDeletePost,
+  onDeleteComment,
 }: {
-  post: Post;
+  post: PostDisplay;
+  currentUserId?: string;
   onReact: (postId: string, type: string) => void;
   onComment: (postId: string, text: string) => void;
   onCommentReact: (postId: string, commentId: string, type: string) => void;
   onCommentReply: (postId: string, commentId: string, text: string) => void;
+  onDeletePost: (postId: string) => void;
+  onDeleteComment: (commentId: string) => void;
 }) => {
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(true);
@@ -265,26 +343,48 @@ const PostCard = ({
           <p className="truncate text-sm font-semibold text-primary">{post.author}</p>
           <p className="truncate text-xs text-muted-foreground">{post.institution}</p>
         </div>
-        <span className="shrink-0 text-[11px] text-muted-foreground sm:text-xs">{post.timeAgo}</span>
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-[11px] text-muted-foreground sm:text-xs">{post.timeAgo}</span>
+          {post.userId === currentUserId && (
+            <button
+              onClick={() => onDeletePost(post.id)}
+              className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Excluir post"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden px-3 pb-2 sm:px-4 sm:pb-3">
-        <p className="break-words text-xs leading-relaxed text-foreground sm:text-sm">{post.text}</p>
+        <p className="break-words text-xs leading-relaxed text-foreground sm:text-sm whitespace-pre-wrap">{post.text}</p>
       </div>
 
       {post.images.length > 0 && (
         <div className={`grid gap-1 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
           {post.images.map((img, i) => (
-            <img key={i} src={img} alt="" className="block h-36 w-full min-w-0 object-cover sm:h-56 md:h-64" onClick={() => setExpandedImage(img)} />
+            <img
+              key={i}
+              src={img}
+              alt=""
+              className="block h-36 w-full min-w-0 object-cover sm:h-56 md:h-64 cursor-pointer hover:opacity-95 transition-opacity"
+              onClick={() => setExpandedImage(img)}
+            />
           ))}
         </div>
       )}
 
       <div className="flex flex-col gap-2 border-t border-border/30 p-3 pb-2 sm:p-4 sm:pb-3">
         <ReactionBar reactions={post.reactions} onReact={(type) => onReact(post.id, type)} />
-        <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+        <button
+          onClick={() => setShowComments(!showComments)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
           <MessageCircle className="h-4 w-4" />
-          <span>{post.comments.length} comentário{post.comments.length !== 1 ? 's' : ''}</span>
+          <span>
+            {post.comments.length} comentário{post.comments.length !== 1 ? 's' : ''}
+          </span>
         </button>
       </div>
 
@@ -292,7 +392,7 @@ const PostCard = ({
         <input
           value={commentText}
           onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Faça um comentário"
+          placeholder="Faça um comentário..."
           className="min-w-0 flex-1 rounded-full border border-border/50 bg-accent/50 px-3 py-2 text-xs transition-shadow focus:outline-none focus:ring-2 focus:ring-primary/30 sm:px-4 sm:py-2.5 sm:text-sm"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && commentText.trim()) {
@@ -323,8 +423,10 @@ const PostCard = ({
             <CommentItem
               key={c.id}
               comment={c}
+              currentUserId={currentUserId}
               onReact={(cId, type) => onCommentReact(post.id, cId, type)}
               onReply={(cId, text) => onCommentReply(post.id, cId, text)}
+              onDelete={onDeleteComment}
             />
           ))}
         </div>
@@ -404,19 +506,9 @@ const StoryViewer = ({
 
           <img src={story.imageUrl} alt="" className="h-[60vh] w-full object-cover sm:h-[70vh]" />
 
-          {/* Tap zones */}
-          <button
-            onClick={prev}
-            className="absolute left-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none"
-            aria-label="Story anterior"
-          />
-          <button
-            onClick={next}
-            className="absolute right-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none"
-            aria-label="Próximo story"
-          />
+          <button onClick={prev} className="absolute left-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none" aria-label="Story anterior" />
+          <button onClick={next} className="absolute right-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none" aria-label="Próximo story" />
 
-          {/* Visible arrows */}
           {index > 0 && (
             <button
               onClick={prev}
@@ -440,104 +532,328 @@ const StoryViewer = ({
 };
 
 const ComunidadeView = () => {
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
-  const [stories] = useState<Story[]>(initialStories);
+  const { user } = useUser();
+  const [posts, setPosts] = useState<PostDisplay[]>([]);
+  const [stories] = useState<Story[]>([
+    { id: '1', author: user?.display_name || 'Seu story', avatar: user?.avatar || '', imageUrl: '', viewed: false, createdAt: '' }
+  ]);
   const [storyIndex, setStoryIndex] = useState<number | null>(null);
   const [newPostText, setNewPostText] = useState('');
-  const [newPostImages, setNewPostImages] = useState<string[]>([]);
+  const [newPostFiles, setNewPostFiles] = useState<File[]>([]);
+  const [newPostPreviews, setNewPostPreviews] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleAddPost = () => {
-    if (!newPostText.trim() && newPostImages.length === 0) return;
-    const post: Post = {
-      id: Date.now().toString(),
-      author: 'João Ênfáse',
-      avatar: '',
-      institution: 'Escola PiCode',
-      text: newPostText,
-      images: newPostImages,
-      timeAgo: 'agora',
-      reactions: [
-        { type: 'like', count: 0, reacted: false },
-        { type: 'heart', count: 0, reacted: false },
-        { type: 'star', count: 0, reacted: false },
-        { type: 'clap', count: 0, reacted: false },
-      ],
-      comments: [],
+  // Map API post to display format
+  const mapApiPostToDisplay = (apiPost: IHubCommunityPost, currentUserId?: string): PostDisplay => {
+    const reactionsMap = apiPost.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+    const reactions = ['like', 'heart', 'star', 'light'].map((type) => {
+      const userList = (reactionsMap as any)[type] || [];
+      return {
+        type,
+        count: userList.length,
+        reacted: currentUserId ? userList.includes(currentUserId) : false,
+      };
+    });
+
+    const images = (apiPost.metadata?.media || []).map((m) => m.uri).filter(Boolean);
+
+    const comments: CommentDisplay[] = (apiPost.replies || []).map((reply) => {
+      const replyReactionsMap = reply.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+      const replyReactions = ['like', 'heart', 'star', 'light'].map((type) => {
+        const uList = (replyReactionsMap as any)[type] || [];
+        return {
+          type,
+          count: uList.length,
+          reacted: currentUserId ? uList.includes(currentUserId) : false,
+        };
+      });
+
+      const nestedReplies: CommentDisplay[] = (reply.replies || []).map((subReply) => {
+        const subMap = subReply.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+        return {
+          id: subReply.id,
+          author: (subReply.user as any)?.display_name || subReply.user?.name || 'Usuário PiCode',
+          avatar: subReply.user?.avatar || '',
+          institution: subReply.user?.username || 'PiCode',
+          text: subReply.content,
+          timeAgo: formatTimeAgo(subReply.created_at),
+          reactions: ['like', 'heart', 'star', 'light'].map((type) => ({
+            type,
+            count: ((subMap as any)[type] || []).length,
+            reacted: currentUserId ? ((subMap as any)[type] || []).includes(currentUserId) : false,
+          })),
+          replies: [],
+          userId: subReply.hub_user_id,
+        };
+      });
+
+      return {
+        id: reply.id,
+        author: (reply.user as any)?.display_name || reply.user?.name || 'Usuário PiCode',
+        avatar: reply.user?.avatar || '',
+        institution: reply.user?.username || 'PiCode',
+        text: reply.content,
+        timeAgo: formatTimeAgo(reply.created_at),
+        reactions: replyReactions,
+        replies: nestedReplies,
+        userId: reply.hub_user_id,
+      };
+    });
+
+    return {
+      id: apiPost.id,
+      author: (apiPost.user as any)?.display_name || apiPost.user?.name || 'Usuário PiCode',
+      avatar: apiPost.user?.avatar || '',
+      institution: apiPost.user?.username || 'PiCode',
+      text: apiPost.content,
+      images,
+      timeAgo: formatTimeAgo(apiPost.created_at),
+      reactions,
+      comments,
+      userId: apiPost.hub_user_id,
     };
-    setPosts([post, ...posts]);
-    setNewPostText('');
-    setNewPostImages([]);
   };
+
+  const loadPosts = async () => {
+    try {
+      setIsLoading(true);
+      const apiPosts = await listCommunityPosts();
+      if (apiPosts && apiPosts.length > 0) {
+        setPosts(apiPosts.map((p) => mapApiPostToDisplay(p, user?.id)));
+      } else {
+        setPosts([]);
+      }
+    } catch (err) {
+      console.error('Failed to load community posts:', err);
+      setPosts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPosts();
+  }, [user?.id]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    Array.from(files).forEach((f) => {
+    const selected = Array.from(files);
+    setNewPostFiles((prev) => [...prev, ...selected]);
+
+    selected.forEach((f) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        if (ev.target?.result) setNewPostImages((prev) => [...prev, ev.target!.result as string]);
+        if (ev.target?.result) setNewPostPreviews((prev) => [...prev, ev.target!.result as string]);
       };
       reader.readAsDataURL(f);
     });
   };
 
-  const toggleReaction = (postId: string, type: string) => {
-    setPosts((prev) => prev.map((p) => p.id !== postId ? p : {
-      ...p,
-      reactions: p.reactions.map((r) => r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }),
-    }));
+  const handleAddPost = async () => {
+    if (!newPostText.trim() && newPostFiles.length === 0) return;
+    setIsSending(true);
+
+    try {
+      let uploadedMedia: { uri: string; label: string }[] = [];
+      if (newPostFiles.length > 0) {
+        const presigned = await Promise.all(
+          newPostFiles.map((f) => getPresignedUrl(f.type || 'image/png', 'community_posts').then((r) => ({ ...r, file: f })))
+        );
+        await Promise.all(presigned.map(({ link, file }) => uploadFile(link, file)));
+        uploadedMedia = presigned.map(({ path, file }) => ({ uri: path, label: file.name }));
+      }
+
+      const created = await createCommunityPost({
+        content: newPostText,
+        metadata: {
+          media: uploadedMedia.length > 0 ? uploadedMedia : newPostPreviews.map((p) => ({ uri: p, label: 'image' })),
+        },
+      });
+
+      if (created?.id) {
+        setPosts((prev) => [mapApiPostToDisplay(created, user?.id), ...prev]);
+      } else {
+        // Local fallback append
+        const localPost: PostDisplay = {
+          id: Date.now().toString(),
+          author: user?.name || 'Eu',
+          avatar: user?.avatar || '',
+          institution: 'PiCode',
+          text: newPostText,
+          images: newPostPreviews,
+          timeAgo: 'agora',
+          reactions: [
+            { type: 'like', count: 0, reacted: false },
+            { type: 'heart', count: 0, reacted: false },
+            { type: 'star', count: 0, reacted: false },
+            { type: 'light', count: 0, reacted: false },
+          ],
+          comments: [],
+          userId: user?.id,
+        };
+        setPosts((prev) => [localPost, ...prev]);
+      }
+
+      toast.success('Publicação enviada com sucesso!');
+      setNewPostText('');
+      setNewPostFiles([]);
+      setNewPostPreviews([]);
+    } catch (err) {
+      console.error('Error creating post:', err);
+      toast.error('Erro ao enviar publicação');
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const addComment = (postId: string, text: string) => {
-    const c: Comment = {
-      id: Date.now().toString(),
-      author: 'João Ênfáse',
-      avatar: '',
-      institution: 'Escola PiCode',
-      text,
-      timeAgo: 'agora',
-      reactions: [
-        { type: 'like', count: 0, reacted: false },
-        { type: 'heart', count: 0, reacted: false },
-        { type: 'star', count: 0, reacted: false },
-        { type: 'clap', count: 0, reacted: false },
-      ],
-      replies: [],
-    };
-    setPosts((prev) => prev.map((p) => (p.id !== postId ? p : { ...p, comments: [...p.comments, c] })));
+  const toggleReaction = async (postId: string, type: string) => {
+    // Optimistic UI update
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id !== postId
+          ? p
+          : {
+              ...p,
+              reactions: p.reactions.map((r) =>
+                r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }
+              ),
+            }
+      )
+    );
+
+    try {
+      await updateCommunityPostReaction({ id: postId, ...({ type } as any) });
+    } catch {
+      // Revert if API fails
+    }
   };
 
-  const toggleCommentReaction = (postId: string, commentId: string, type: string) => {
-    setPosts((prev) => prev.map((p) => p.id !== postId ? p : {
-      ...p,
-      comments: p.comments.map((c) => c.id !== commentId ? c : {
-        ...c,
-        reactions: c.reactions.map((r) => r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }),
-      }),
-    }));
+  const addComment = async (postId: string, text: string) => {
+    try {
+      const createdReply = await createCommunityPost({
+        content: text,
+        hub_community_post_id: postId,
+      }).catch(() => null);
+
+      const c: CommentDisplay = {
+        id: createdReply?.id || Date.now().toString(),
+        author: user?.name || 'Eu',
+        avatar: user?.avatar || '',
+        institution: 'PiCode',
+        text,
+        timeAgo: 'agora',
+        reactions: [
+          { type: 'like', count: 0, reacted: false },
+          { type: 'heart', count: 0, reacted: false },
+          { type: 'star', count: 0, reacted: false },
+          { type: 'light', count: 0, reacted: false },
+        ],
+        replies: [],
+        userId: user?.id,
+      };
+
+      setPosts((prev) => prev.map((p) => (p.id !== postId ? p : { ...p, comments: [...p.comments, c] })));
+      toast.success('Comentário enviado!');
+    } catch (err) {
+      toast.error('Não foi possível enviar o comentário');
+    }
   };
 
-  const addReply = (postId: string, commentId: string, text: string) => {
-    const reply: Comment = {
-      id: Date.now().toString(),
-      author: 'João Ênfase',
-      avatar: '',
-      institution: 'Escola PiCode',
-      text,
-      timeAgo: 'agora',
-      reactions: [
-        { type: 'like', count: 0, reacted: false },
-        { type: 'heart', count: 0, reacted: false },
-        { type: 'star', count: 0, reacted: false },
-        { type: 'clap', count: 0, reacted: false },
-      ],
-      replies: [],
-    };
-    setPosts((prev) => prev.map((p) => p.id !== postId ? p : {
-      ...p,
-      comments: p.comments.map((c) => c.id !== commentId ? c : { ...c, replies: [...c.replies, reply] }),
-    }));
+  const addReply = async (postId: string, commentId: string, text: string) => {
+    try {
+      const createdReply = await createCommunityPost({
+        content: text,
+        hub_community_post_id: commentId,
+      }).catch(() => null);
+
+      const reply: CommentDisplay = {
+        id: createdReply?.id || Date.now().toString(),
+        author: user?.name || 'Eu',
+        avatar: user?.avatar || '',
+        institution: 'PiCode',
+        text,
+        timeAgo: 'agora',
+        reactions: [
+          { type: 'like', count: 0, reacted: false },
+          { type: 'heart', count: 0, reacted: false },
+          { type: 'star', count: 0, reacted: false },
+          { type: 'light', count: 0, reacted: false },
+        ],
+        replies: [],
+        userId: user?.id,
+      };
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id !== postId
+            ? p
+            : {
+                ...p,
+                comments: p.comments.map((c) => (c.id !== commentId ? c : { ...c, replies: [...c.replies, reply] })),
+              }
+        )
+      );
+      toast.success('Resposta enviada!');
+    } catch (err) {
+      toast.error('Não foi possível responder');
+    }
+  };
+
+  const toggleCommentReaction = async (_postId: string, commentId: string, type: string) => {
+    setPosts((prev) =>
+      prev.map((p) => ({
+        ...p,
+        comments: p.comments.map((c) =>
+          c.id !== commentId
+            ? c
+            : {
+                ...c,
+                reactions: c.reactions.map((r) =>
+                  r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }
+                ),
+              }
+        ),
+      }))
+    );
+
+    try {
+      await updateCommunityPostReaction({ id: commentId, ...({ type } as any) });
+    } catch {}
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm('Deseja realmente excluir esta publicação?')) return;
+    try {
+      await deleteCommunityPost(postId);
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      toast.success('Publicação excluída com sucesso!');
+    } catch {
+      toast.error('Erro ao excluir publicação');
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('Deseja realmente excluir esta resposta?')) return;
+    try {
+      await deleteCommunityPost(commentId);
+      setPosts((prev) =>
+        prev.map((p) => ({
+          ...p,
+          comments: p.comments
+            .filter((c) => c.id !== commentId)
+            .map((c) => ({
+              ...c,
+              replies: c.replies.filter((r) => r.id !== commentId),
+            })),
+        }))
+      );
+      toast.success('Resposta excluída!');
+    } catch {
+      toast.error('Erro ao excluir resposta');
+    }
   };
 
   return (
@@ -555,17 +871,20 @@ const ComunidadeView = () => {
         <textarea
           value={newPostText}
           onChange={(e) => setNewPostText(e.target.value)}
-          placeholder="Comece uma publicação"
+          placeholder="Comece uma publicação na comunidade PiCode..."
           className="min-h-[80px] w-full resize-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none sm:min-h-[100px] sm:text-sm"
         />
 
-        {newPostImages.length > 0 && (
+        {newPostPreviews.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {newPostImages.map((img, i) => (
+            {newPostPreviews.map((img, i) => (
               <div key={i} className="group relative h-16 w-16 overflow-hidden rounded-xl sm:h-20 sm:w-20">
                 <img src={img} alt="" className="h-full w-full object-cover" />
                 <button
-                  onClick={() => setNewPostImages((prev) => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => {
+                    setNewPostPreviews((prev) => prev.filter((_, idx) => idx !== i));
+                    setNewPostFiles((prev) => prev.filter((_, idx) => idx !== i));
+                  }}
                   className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
                 >
                   <X className="h-3 w-3 text-white" />
@@ -587,26 +906,37 @@ const ComunidadeView = () => {
           </div>
           <button
             onClick={handleAddPost}
-            disabled={!newPostText.trim() && newPostImages.length === 0}
+            disabled={(!newPostText.trim() && newPostFiles.length === 0) || isSending}
             className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-sm"
           >
-            <Send className="h-4 w-4" /> Enviar
+            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <span>Enviar</span>
           </button>
         </div>
       </div>
 
-      <div className="space-y-4 overflow-x-hidden sm:space-y-5">
-        {posts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            onReact={toggleReaction}
-            onComment={addComment}
-            onCommentReact={toggleCommentReaction}
-            onCommentReply={addReply}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span>Carregando comunidade...</span>
+        </div>
+      ) : (
+        <div className="space-y-4 overflow-x-hidden sm:space-y-5">
+          {posts.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              currentUserId={user?.id}
+              onReact={toggleReaction}
+              onComment={addComment}
+              onCommentReact={toggleCommentReaction}
+              onCommentReply={addReply}
+              onDeletePost={handleDeletePost}
+              onDeleteComment={handleDeleteComment}
+            />
+          ))}
+        </div>
+      )}
 
       <AnimatePresence>
         {storyIndex !== null && (

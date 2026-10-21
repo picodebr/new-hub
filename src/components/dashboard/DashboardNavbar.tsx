@@ -1,10 +1,44 @@
-import { useState, useRef, useEffect } from 'react';
-import { Menu, Bell, LogOut, Rocket, ChevronDown, AlertTriangle, Info, CheckCircle, X, BellOff, Package, GraduationCap, BookOpen, Users, Sparkles, CheckCheck, Building2, School, Check, Network } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import {
+  Menu,
+  Bell,
+  LogOut,
+  Rocket,
+  ChevronDown,
+  AlertTriangle,
+  Info,
+  CheckCircle,
+  X,
+  BellOff,
+  Package,
+  GraduationCap,
+  BookOpen,
+  Users,
+  Sparkles,
+  CheckCheck,
+  Building2,
+  School,
+  Check,
+  Network,
+  Loader2,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '@/hooks/useUser';
+import { useSelectedSchool } from '@/hooks/useSelectedSchool';
+import { listSchoolGroups } from '@/_base/services/school';
+import {
+  getNotifications,
+  markNotificationAsRead,
+  readAllNotifications,
+  deleteAllNotifications,
+} from '@/_base/services/notifications';
+import { IHubSchoolGroup, IHubUserSchool } from '@/_base/interfaces/school';
+import { IHubNotification } from '@/_base/interfaces/notification';
+import { IStoreMakerSchool } from '@/_base/interfaces/storeMaker';
+import { toast } from 'sonner';
 
-interface Notification {
+interface UINotification {
   id: string;
   category: string;
   icon: 'warning' | 'info' | 'success';
@@ -12,19 +46,14 @@ interface Notification {
   description: string;
   time: string;
   read: boolean;
+  raw?: IHubNotification | IStoreMakerSchool;
 }
 
-const initialNotifications: Notification[] = [
+const initialMockNotifications: UINotification[] = [
   { id: '1', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Abraçadeira de nylon preta - 0 un', time: '2 min', read: false },
-  { id: '2', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Abraçadeira de nylon 40 cm - 0 un', time: '2 min', read: false },
-  { id: '3', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Arame Plastificado (10 cm) - 0 un', time: '5 min', read: false },
-  { id: '4', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Arruela 6 mm - 0 un', time: '5 min', read: false },
-  { id: '5', category: 'TURMAS', icon: 'info', title: 'Novo aluno adicionado', description: 'João Silva entrou na turma Robótica A', time: '10 min', read: false },
-  { id: '6', category: 'TURMAS', icon: 'info', title: 'Novo aluno adicionado', description: 'Maria Santos entrou na turma Robótica B', time: '15 min', read: false },
-  { id: '7', category: 'CURSOS', icon: 'success', title: 'Módulo concluído', description: 'Você completou o módulo "Introdução ao Arduino"', time: '1h', read: false },
-  { id: '8', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Arruela 8 mm - 0 un', time: '1h', read: false },
-  { id: '9', category: 'ESTOQUE MAKER', icon: 'warning', title: 'Item em falta no estoque', description: 'Barbante (10 cm) - 0 un', time: '2h', read: false },
-  { id: '10', category: 'COMUNIDADE', icon: 'info', title: 'Nova postagem', description: 'Novo projeto compartilhado na comunidade', time: '3h', read: true },
+  { id: '2', category: 'TURMAS', icon: 'info', title: 'Novo aluno adicionado', description: 'João Silva entrou na turma Robótica A', time: '10 min', read: false },
+  { id: '3', category: 'CURSOS', icon: 'success', title: 'Módulo concluído', description: 'Você completou o módulo "Introdução ao Arduino"', time: '1h', read: false },
+  { id: '4', category: 'COMUNIDADE', icon: 'info', title: 'Nova postagem', description: 'Novo projeto compartilhado na comunidade', time: '3h', read: true },
 ];
 
 const iconConfig = {
@@ -46,30 +75,97 @@ interface Props {
   onToggleTheme: () => void;
 }
 
-const NETWORKS = ['Instituição PiCode', 'Rede Municipal SP', 'Rede Estadual RJ'];
-const SCHOOLS_BY_NETWORK: Record<string, string[]> = {
-  'Instituição PiCode': ['Escola PiCode', 'PiCode Innovation Lab', 'PiCode Tech Center'],
-  'Rede Municipal SP': ['EM São José', 'EM Santa Maria', 'EM Dom Pedro II'],
-  'Rede Estadual RJ': ['EE Machado de Assis', 'EE Cecília Meireles'],
-};
-
 const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
   const navigate = useNavigate();
-  const { user, logout } = useUser();
-  const isStudent = user?.role === 'student';
+  const { user, logout, isMaster, isTeacher, isStudent } = useUser();
+  const {
+    school,
+    schools,
+    schoolGroups,
+    selectedSchoolGroup,
+    changeSchool,
+    changeSchoolGroup,
+    isLoadingSchool,
+  } = useSelectedSchool();
+
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState<UINotification[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const [network, setNetwork] = useState(NETWORKS[0]);
-  const [school, setSchool] = useState(SCHOOLS_BY_NETWORK[NETWORKS[0]][0]);
   const [openNetwork, setOpenNetwork] = useState(false);
   const [openSchool, setOpenSchool] = useState(false);
   const networkRef = useRef<HTMLDivElement>(null);
   const schoolRef = useRef<HTMLDivElement>(null);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // Buscar notificações reais da escola ativa
+  const activeSchoolId = school?.hub_school_id || user?.chosen_school_id || '';
 
+  const fetchRealNotifications = useCallback(async () => {
+    if (!activeSchoolId || activeSchoolId === 'default') return;
+    try {
+      const res = await getNotifications(activeSchoolId);
+      const items: UINotification[] = [];
+
+      // Notificações de estoque zerado/baixo
+      if (Array.isArray(res.stocks)) {
+        res.stocks.slice(0, 5).forEach((st: any, i: number) => {
+          items.push({
+            id: `stock-${st.id || i}`,
+            category: 'ESTOQUE MAKER',
+            icon: 'warning',
+            title: 'Item em falta no estoque',
+            description: `${st.name || st.title || st.store_maker?.name || 'Componente'} - ${st.amount ?? st.quantity ?? 0} un`,
+            time: 'Hoje',
+            read: false,
+            raw: st,
+          });
+        });
+      }
+
+      // Notificações da API
+      if (res.notifications && Array.isArray(res.notifications.results)) {
+        res.notifications.results.forEach((n: any) => {
+          const isRead = n.opened_by?.includes(user?.id || '');
+          let cat = 'TURMAS';
+          let ic: 'warning' | 'info' | 'success' = 'info';
+
+          if (String(n.target_type) === 'course') {
+            cat = 'CURSOS';
+            ic = 'success';
+          } else if (String(n.target_type) === 'post') {
+            cat = 'COMUNIDADE';
+            ic = 'info';
+          } else if (String(n.target_type) === 'stock') {
+            cat = 'ESTOQUE MAKER';
+            ic = 'warning';
+          }
+
+          items.push({
+            id: n.id,
+            category: cat,
+            icon: ic,
+            title: n.message || 'Nova notificação',
+            description: n.message || '',
+            time: new Date(n.created_at).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            read: isRead,
+            raw: n,
+          });
+        });
+      }
+
+      if (items.length > 0) {
+        setNotifications(items);
+      }
+    } catch (err) {
+      console.warn('Erro ao sincronizar notificações:', err);
+    }
+  }, [activeSchoolId, user?.id]);
+
+  useEffect(() => {
+    fetchRealNotifications();
+  }, [fetchRealNotifications]);
+
+  // Listener para fechar dropdowns no clique fora
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
@@ -86,22 +182,84 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  const dismissNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const handleSelectNetwork = (n: string) => {
-    setNetwork(n);
-    setSchool(SCHOOLS_BY_NETWORK[n][0]);
-    setOpenNetwork(false);
+  const markAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      if (activeSchoolId && activeSchoolId !== 'default') {
+        await readAllNotifications(activeSchoolId);
+      }
+    } catch (err) {
+      console.warn('Erro ao marcar notificações como lidas:', err);
+    }
   };
 
-  const schoolsForNetwork = SCHOOLS_BY_NETWORK[network] || [];
+  const handleNotificationClick = async (notif: UINotification) => {
+    if (!notif.read) {
+      setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+      try {
+        if (!notif.id.startsWith('stock-')) {
+          await markNotificationAsRead(notif.id);
+        }
+      } catch (err) {
+        console.warn('Erro ao marcar notificação:', err);
+      }
+    }
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const clearAllNotifications = async () => {
+    setNotifications([]);
+    try {
+      if (activeSchoolId && activeSchoolId !== 'default') {
+        await deleteAllNotifications(activeSchoolId);
+      }
+      toast.success('Todas as notificações foram limpas');
+    } catch (err) {
+      console.warn('Erro ao limpar notificações:', err);
+    }
+  };
+
+  const handleSelectGroup = async (group: IHubSchoolGroup) => {
+    setOpenNetwork(false);
+    try {
+      await changeSchoolGroup(group.id);
+      toast.success(`Rede alterada para: ${group.display_name}`);
+    } catch {
+      toast.error('Erro ao alterar rede');
+    }
+  };
+
+  const handleSelectSchool = async (s: IHubUserSchool) => {
+    setOpenSchool(false);
+    try {
+      await changeSchool(s.hub_school_id);
+      toast.success(`Escola ativa: ${s.display_name}`);
+    } catch {
+      toast.error('Erro ao alterar escola');
+    }
+  };
 
   // Group by category
-  const grouped = notifications.reduce<Record<string, Notification[]>>((acc, n) => {
+  const grouped = notifications.reduce<Record<string, UINotification[]>>((acc, n) => {
     (acc[n.category] = acc[n.category] || []).push(n);
     return acc;
   }, {});
+
+  const currentGroupName =
+    selectedSchoolGroup?.display_name ||
+    user?.school_group?.display_name ||
+    schoolGroups[0]?.display_name ||
+    'Instituição PiCode';
+
+  const currentSchoolName =
+    school?.display_name ||
+    schools[0]?.display_name ||
+    'Selecione uma escola';
 
   return (
     <motion.nav
@@ -130,124 +288,136 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
           </div>
         </div>
 
-        {/* Center - Network/School selectors (teacher only) */}
-        {!isStudent && (
-        <div className="hidden md:flex items-center gap-2">
-          {/* Network dropdown */}
-          <div className="relative" ref={networkRef}>
-            <button
-              onClick={() => { setOpenNetwork(o => !o); setOpenSchool(false); }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-sm ${
-                openNetwork
-                  ? 'bg-primary/10 border-primary/30 text-foreground'
-                  : 'bg-accent/60 border-transparent hover:bg-accent text-foreground'
-              }`}
-            >
-              <Network className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground text-xs">Rede:</span>
-              <span className="font-medium">{network}</span>
-              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${openNetwork ? 'rotate-180' : ''}`} />
-            </button>
-            <AnimatePresence>
-              {openNetwork && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute left-0 top-12 w-72 rounded-2xl border border-border bg-popover shadow-2xl shadow-foreground/15 overflow-hidden z-50"
+        {/* Center - Network/School selectors (master / teacher) */}
+        {isTeacher && (
+          <div className="hidden md:flex items-center gap-2">
+            {/* Network dropdown (exclusive for master) */}
+            {isMaster && (
+              <div className="relative" ref={networkRef}>
+                <button
+                  onClick={() => {
+                    setOpenNetwork((o) => !o);
+                    setOpenSchool(false);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-sm ${
+                    openNetwork
+                      ? 'bg-primary/10 border-primary/30 text-foreground'
+                      : 'bg-accent/60 border-transparent hover:bg-accent text-foreground'
+                  }`}
                 >
-                  <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60">
-                    <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
-                      <Building2 className="w-4 h-4 text-primary" />
+                  <Network className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground text-xs">Rede:</span>
+                  <span className="font-medium max-w-[140px] truncate">{currentGroupName}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${openNetwork ? 'rotate-180' : ''}`} />
+                </button>
+              <AnimatePresence>
+                {openNetwork && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute left-0 top-12 w-72 rounded-2xl border border-border bg-popover shadow-2xl shadow-foreground/15 overflow-hidden z-50"
+                  >
+                    <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60">
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+                        <Building2 className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-foreground leading-tight">Selecionar Rede</p>
+                        <p className="text-[11px] text-muted-foreground leading-tight">Mude para outra instituição</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-foreground leading-tight">Selecionar Rede</p>
-                      <p className="text-[11px] text-muted-foreground leading-tight">Mude para outra instituição</p>
+                    <div className="p-1.5 max-h-72 overflow-y-auto">
+                      {(schoolGroups.length > 0 ? schoolGroups : [{ id: '1', display_name: currentGroupName }]).map((grp) => {
+                        const active = grp.display_name === currentGroupName;
+                        return (
+                          <button
+                            key={grp.id}
+                            onClick={() => handleSelectGroup(grp as IHubSchoolGroup)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                              active ? 'bg-primary/10 text-foreground' : 'hover:bg-accent text-foreground/90'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <Building2 className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+                              <span className={`truncate ${active ? 'font-semibold' : 'font-medium'}`}>{grp.display_name}</span>
+                            </span>
+                            {active && <Check className="w-4 h-4 text-primary shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  <div className="p-1.5 max-h-72 overflow-y-auto">
-                    {NETWORKS.map((n) => {
-                      const active = n === network;
-                      return (
-                        <button
-                          key={n}
-                          onClick={() => handleSelectNetwork(n)}
-                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                            active ? 'bg-primary/10 text-foreground' : 'hover:bg-accent text-foreground/90'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5 min-w-0">
-                            <Building2 className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <span className={`truncate ${active ? 'font-semibold' : 'font-medium'}`}>{n}</span>
-                          </span>
-                          {active && <Check className="w-4 h-4 text-primary shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            )}
 
-          {/* School dropdown */}
-          <div className="relative" ref={schoolRef}>
-            <button
-              onClick={() => { setOpenSchool(o => !o); setOpenNetwork(false); }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-sm ${
-                openSchool
-                  ? 'bg-primary/10 border-primary/30 text-foreground'
-                  : 'bg-accent/60 border-transparent hover:bg-accent text-foreground'
-              }`}
-            >
-              <School className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="font-medium">{school}</span>
-              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${openSchool ? 'rotate-180' : ''}`} />
-            </button>
-            <AnimatePresence>
-              {openSchool && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute left-0 top-12 w-72 rounded-2xl border border-border bg-popover shadow-2xl shadow-foreground/15 overflow-hidden z-50"
-                >
-                  <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60">
-                    <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
-                      <School className="w-4 h-4 text-primary" />
+            {/* School dropdown */}
+            <div className="relative" ref={schoolRef}>
+              <button
+                onClick={() => {
+                  setOpenSchool((o) => !o);
+                  setOpenNetwork(false);
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-sm ${
+                  openSchool
+                    ? 'bg-primary/10 border-primary/30 text-foreground'
+                    : 'bg-accent/60 border-transparent hover:bg-accent text-foreground'
+                }`}
+              >
+                <School className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="font-medium max-w-[160px] truncate">{currentSchoolName}</span>
+                {isLoadingSchool ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                ) : (
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${openSchool ? 'rotate-180' : ''}`} />
+                )}
+              </button>
+              <AnimatePresence>
+                {openSchool && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute left-0 top-12 w-72 rounded-2xl border border-border bg-popover shadow-2xl shadow-foreground/15 overflow-hidden z-50"
+                  >
+                    <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60">
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+                        <School className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-foreground leading-tight">Selecionar Escola</p>
+                        <p className="text-[11px] text-muted-foreground leading-tight">Em {currentGroupName}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-foreground leading-tight">Selecionar Escola</p>
-                      <p className="text-[11px] text-muted-foreground leading-tight">Em {network}</p>
+                    <div className="p-1.5 max-h-72 overflow-y-auto">
+                      {(schools.length > 0 ? schools : [{ hub_school_id: 'default', display_name: currentSchoolName } as any]).map((s) => {
+                        const active = s.hub_school_id === school?.hub_school_id;
+                        return (
+                          <button
+                            key={s.hub_school_id}
+                            onClick={() => handleSelectSchool(s)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                              active ? 'bg-primary/10 text-foreground' : 'hover:bg-accent text-foreground/90'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <School className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+                              <span className={`truncate ${active ? 'font-semibold' : 'font-medium'}`}>{s.display_name}</span>
+                            </span>
+                            {active && <Check className="w-4 h-4 text-primary shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  <div className="p-1.5 max-h-72 overflow-y-auto">
-                    {schoolsForNetwork.map((s) => {
-                      const active = s === school;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => { setSchool(s); setOpenSchool(false); }}
-                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                            active ? 'bg-primary/10 text-foreground' : 'hover:bg-accent text-foreground/90'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5 min-w-0">
-                            <School className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <span className={`truncate ${active ? 'font-semibold' : 'font-medium'}`}>{s}</span>
-                          </span>
-                          {active && <Check className="w-4 h-4 text-primary shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
-        </div>
         )}
 
         {/* Right */}
@@ -272,7 +442,7 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute right-0 top-12 w-[22rem] sm:w-[26rem] max-h-[75vh] rounded-3xl border border-border bg-popover shadow-2xl shadow-foreground/20 overflow-hidden flex flex-col"
+                  className="absolute right-0 top-12 w-[22rem] sm:w-[26rem] max-h-[75vh] rounded-3xl border border-border bg-popover shadow-2xl shadow-foreground/20 overflow-hidden flex flex-col z-50"
                 >
                   {/* Decorative gradient */}
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/8 via-primary/3 to-transparent pointer-events-none" />
@@ -338,6 +508,7 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
                                   initial={{ opacity: 0, x: -6 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   transition={{ delay: idx * 0.025, duration: 0.2 }}
+                                  onClick={() => handleNotificationClick(n)}
                                   className={`relative flex items-start gap-3 px-3 py-3 mx-1 rounded-2xl transition-all duration-200 group cursor-pointer ${
                                     !n.read
                                       ? 'bg-primary/5 hover:bg-primary/10'
@@ -360,7 +531,10 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
                                     <p className="text-xs text-muted-foreground leading-snug line-clamp-2">{n.description}</p>
                                   </div>
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); dismissNotification(n.id); }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      dismissNotification(n.id);
+                                    }}
                                     className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-background/80 backdrop-blur-sm border border-border/40 hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive transition-all"
                                     aria-label="Dispensar"
                                   >
@@ -377,12 +551,20 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
 
                   {/* Footer */}
                   {notifications.length > 0 && (
-                    <>
-                      <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-                      <button className="px-5 py-3 text-xs font-medium text-muted-foreground hover:text-primary hover:bg-accent/40 transition-colors">
-                        Ver todas as notificações
+                    <div className="p-2 border-t border-border/40 flex items-center justify-between">
+                      <button
+                        onClick={clearAllNotifications}
+                        className="px-3 py-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        Limpar todas
                       </button>
-                    </>
+                      <button
+                        onClick={markAllRead}
+                        className="px-3 py-1.5 text-xs text-primary font-medium hover:underline"
+                      >
+                        Marcar como lidas
+                      </button>
+                    </div>
                   )}
                 </motion.div>
               )}
@@ -390,7 +572,10 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
           </div>
 
           <button
-            onClick={() => { logout(); navigate('/'); }}
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
             className="p-2 rounded-xl hover:bg-accent transition-colors"
             title="Sair"
           >

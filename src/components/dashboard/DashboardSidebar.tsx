@@ -1,11 +1,28 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Home, Play, Users, CodeXml, Package, BookOpen, MessageCircle, BrainCircuit, ChevronLeft, Coins, Flame,
+  Home,
+  Play,
+  Users,
+  CodeXml,
+  Package,
+  BookOpen,
+  MessageCircle,
+  BrainCircuit,
+  ChevronLeft,
+  Coins,
+  Flame,
+  CalendarRange,
+  FileText,
+  Trophy,
+  Calendar,
+  ShoppingBag,
+  LifeBuoy,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useUser } from '@/hooks/useUser';
 import { useStudentAvatar } from '@/hooks/useStudentAvatar';
 import { AvatarPreview } from '@/components/dashboard/student/AvatarCustomizer';
+import { formatCoin } from '@/_base/utils';
 
 interface Props {
   open: boolean;
@@ -20,11 +37,16 @@ const teacherNav: NavItem[] = [
   { icon: Home, label: 'Home' },
   { icon: Play, label: 'Cursos' },
   { icon: Users, label: 'Turmas' },
+  { icon: CalendarRange, label: 'Meus Planejamentos' },
   { icon: CodeXml, label: 'Code Lab' },
   { icon: BrainCircuit, label: 'Vision Lab' },
   { icon: Package, label: 'Estoque Maker', badge: true },
   { icon: BookOpen, label: 'Biblioteca' },
   { icon: MessageCircle, label: 'Comunidade' },
+  { icon: FileText, label: 'Relatórios' },
+  { icon: Trophy, label: 'Ranking' },
+  { icon: Calendar, label: 'Eventos' },
+  { icon: LifeBuoy, label: 'Suporte' },
 ];
 
 const studentNav: NavItem[] = [
@@ -34,14 +56,22 @@ const studentNav: NavItem[] = [
   { icon: CodeXml, label: 'Code Lab' },
   { icon: BrainCircuit, label: 'Vision Lab' },
   { icon: BookOpen, label: 'Biblioteca' },
+  { icon: ShoppingBag, label: 'Loja' },
+  { icon: Trophy, label: 'Ranking' },
+  { icon: Calendar, label: 'Eventos' },
+  { icon: LifeBuoy, label: 'Suporte' },
 ];
 
 const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
   const isMobile = useIsMobile();
-  const { user } = useUser();
+  const { user, chosenSchool } = useUser();
   const { avatar } = useStudentAvatar();
   const navItems = user?.role === 'student' ? studentNav : teacherNav;
   const isStudent = user?.role === 'student';
+
+  const userCoins = user?.metadata?.coins ?? (isStudent ? 14874.14 : 0);
+  const userStreak = user?.metadata?.streak ?? 7;
+  const schoolName = chosenSchool?.display_name || user?.school_group?.display_name || 'Escola PiCode';
 
   return (
     <AnimatePresence>
@@ -67,11 +97,9 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate">{user?.name ?? 'Convidado'}</p>
-                {isStudent ? (
-                  <p className="text-[11px] text-muted-foreground truncate leading-tight">Escola PiCode</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground truncate">{user?.email ?? '—'}</p>
-                )}
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                  {isStudent ? schoolName : user?.email ?? schoolName}
+                </p>
               </div>
               <button
                 onClick={onClose}
@@ -87,7 +115,9 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
                   <Coins className="h-4 w-4 shrink-0 text-amber-500" />
                   <div className="min-w-0 leading-tight">
                     <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Saldo</p>
-                    <p className="truncate text-xs font-bold text-foreground">R$ 14.874,14</p>
+                    <p className="truncate text-xs font-bold text-foreground">
+                      {formatCoin(userCoins)}
+                    </p>
                   </div>
                 </div>
                 <div className="w-px bg-border/60" />
@@ -95,7 +125,9 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
                   <Flame className="h-4 w-4 shrink-0 text-rose-500" />
                   <div className="min-w-0 leading-tight">
                     <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Sequência</p>
-                    <p className="truncate text-xs font-bold text-foreground">7 dias</p>
+                    <p className="truncate text-xs font-bold text-foreground">
+                      {userStreak} dias
+                    </p>
                   </div>
                 </div>
               </div>
@@ -116,7 +148,7 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
                   key={item.label}
                   data-tour={`nav-${tourId}`}
                   onClick={() => onNavChange(item.label)}
-                  whileHover={{ scale: 1.03, x: 2 }}
+                  whileHover={{ scale: 1.02, x: 2 }}
                   whileTap={{ scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm transition-colors duration-200 ${
@@ -126,7 +158,7 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
                   }`}
                 >
                   <item.icon className="flex-shrink-0" style={{ width: 18, height: 18 }} />
-                  <span>{item.label}</span>
+                  <span className="truncate">{item.label}</span>
                   {item.badge && (
                     <span className="ml-auto w-2 h-2 rounded-full bg-destructive" />
                   )}

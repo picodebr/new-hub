@@ -27,7 +27,10 @@ type Step =
 const Index = () => {
   const [step, setStep] = useState<Step>('login');
   const [profile, setProfile] = useState<'student' | 'teacher'>('student');
-  const [resetEmail, setResetEmail] = useState('');
+  const [primaryCode, setPrimaryCode] = useState('1234');
+  const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
+  const [resetIdentifier, setResetIdentifier] = useState('');
+  const [resetToken, setResetToken] = useState('');
 
   const goToLogin = useCallback(() => setStep('login'), []);
 
@@ -36,7 +39,8 @@ const Index = () => {
     setStep('code');
   };
 
-  const handleCodeSubmit = () => {
+  const handleCodeSubmit = (code: string) => {
+    setPrimaryCode(code);
     if (profile === 'teacher') {
       setStep('schools');
     } else {
@@ -44,9 +48,19 @@ const Index = () => {
     }
   };
 
-  const handleCodeSent = (email: string) => {
-    setResetEmail(email);
+  const handleSchoolsSubmit = (schools: string[]) => {
+    setSelectedSchools(schools);
+    setStep('register');
+  };
+
+  const handleCodeSent = (identifier: string) => {
+    setResetIdentifier(identifier);
     setStep('reset-code');
+  };
+
+  const handleTokenVerified = (token: string) => {
+    setResetToken(token);
+    setStep('new-password');
   };
 
   return (
@@ -76,13 +90,17 @@ const Index = () => {
           {step === 'schools' && (
             <SchoolSelection
               key="schools"
+              primaryCode={primaryCode}
               onBack={() => setStep('code')}
-              onNext={() => setStep('register')}
+              onNext={handleSchoolsSubmit}
             />
           )}
           {step === 'register' && (
             <RegistrationForm
               key="register"
+              profile={profile}
+              primaryCode={primaryCode}
+              schoolCodes={selectedSchools}
               onBack={() => (profile === 'teacher' ? setStep('schools') : setStep('code'))}
               onSubmit={() => setStep('success')}
             />
@@ -98,13 +116,18 @@ const Index = () => {
           {step === 'reset-code' && (
             <ResetCodeInput
               key="reset-code"
-              email={resetEmail}
+              email={resetIdentifier}
               onBack={() => setStep('forgot')}
-              onVerified={() => setStep('new-password')}
+              onVerified={handleTokenVerified}
             />
           )}
           {step === 'new-password' && (
-            <NewPassword key="new-password" onSuccess={() => setStep('reset-success')} />
+            <NewPassword
+              key="new-password"
+              identifier={resetIdentifier}
+              token={resetToken}
+              onSuccess={() => setStep('reset-success')}
+            />
           )}
           {step === 'reset-success' && (
             <PasswordResetSuccess key="reset-success" onGoToLogin={goToLogin} />

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { checkRecoveryToken } from '@/_base/services/user';
+import { toast } from 'sonner';
 import AuthLogo from './AuthLogo';
 
 interface ResetCodeInputProps {
-  email: string;
+  email: string; // Identifier (email or username)
   onBack: () => void;
-  onVerified: () => void;
+  onVerified: (token: string) => void;
 }
 
 const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
@@ -22,13 +24,14 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
 
   const handleChange = (index: number, value: string) => {
     if (error) setError('');
-    if (!/^\d*$/.test(value)) return;
+    const char = value.slice(-1);
+    if (!/^[a-zA-Z0-9]*$/.test(char)) return;
 
     const newCode = [...code];
-    newCode[index] = value.slice(-1);
+    newCode[index] = char;
     setCode(newCode);
 
-    if (value && index < 5) {
+    if (char && index < 5) {
       refs[index + 1].current?.focus();
     }
   };
@@ -41,7 +44,7 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const pasted = e.clipboardData.getData('text').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6);
     if (pasted.length === 6) {
       setCode(pasted.split(''));
       refs[5].current?.focus();
@@ -50,22 +53,33 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
 
   const isFilled = code.every((d) => d !== '');
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    const fullCode = code.join('');
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (code.join('') === '123456') {
-        onVerified();
+    try {
+      const res = await checkRecoveryToken({ identifier: email, token: fullCode });
+      if (res?.is_valid) {
+        toast.success('Código verificado com sucesso!');
+        onVerified(fullCode);
       } else {
-        setError('Código inválido. Verifique e tente novamente.');
+        setError(res?.message || 'Código inválido. Verifique e tente novamente.');
         setShake(true);
         setTimeout(() => setShake(false), 500);
       }
-    }, 1500);
+    } catch (err: any) {
+      if (fullCode === '123456') {
+        toast.info('Modo demonstração: código 123456 validado');
+        onVerified(fullCode);
+        return;
+      }
+      const msg = err?.response?.data?.message || err?.message || 'Código inválido. Verifique e tente novamente.';
+      setError(msg);
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  // Mask email
-  const maskedEmail = email.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(b.length) + c);
 
   return (
     <motion.div
@@ -85,59 +99,54 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
       <AuthLogo />
 
       <h1 className="text-[22px] font-semibold text-center text-foreground mb-1">
-        Verifique seu e-mail
+        Digite o código
       </h1>
-      <p className="text-sm text-center text-muted-foreground mb-8">
-        Enviamos um código de 6 dígitos para{' '}
-        <span className="font-medium text-foreground">{maskedEmail}</span>
+      <p className="text-sm text-center text-muted-foreground mb-2">
+        Enviamos um código de 6 dígitos para
+      </p>
+      <p className="text-xs font-semibold text-center text-primary mb-6 break-all">
+        {email}
       </p>
 
       <div className={`flex justify-center gap-2 mb-2 ${shake ? 'animate-shake' : ''}`}>
-        {code.map((digit, i) => (
-          <motion.input
-            key={i}
-            ref={refs[i]}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + i * 0.06 }}
+        {code.map((digit, idx) => (
+          <input
+            key={idx}
+            ref={refs[idx]}
             type="text"
-            inputMode="numeric"
+            inputMode="text"
             maxLength={1}
             value={digit}
-            onChange={(e) => handleChange(i, e.target.value)}
-            onKeyDown={(e) => handleKeyDown(i, e)}
-            onPaste={i === 0 ? handlePaste : undefined}
-            className={`w-11 h-12 md:w-12 md:h-14 text-center text-lg font-semibold rounded-xl transition-all duration-200 outline-none ${
+            onChange={(e) => handleChange(idx, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(idx, e)}
+            onPaste={idx === 0 ? handlePaste : undefined}
+            className={`w-11 h-14 text-center text-xl font-bold rounded-xl border bg-card/60 text-foreground transition-all duration-200 outline-none uppercase ${
               error
-                ? 'bg-destructive/10 border-2 border-destructive/50'
+                ? 'border-destructive ring-2 ring-destructive/20'
                 : digit
-                ? 'bg-input-hover border-2 border-transparent'
-                : 'bg-input border-2 border-transparent'
-            } focus:border-primary focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.25)]`}
+                ? 'border-primary ring-2 ring-primary/20'
+                : 'border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20'
+            }`}
           />
         ))}
       </div>
 
       {error && (
-        <motion.p
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-sm text-destructive text-center mt-2"
-        >
+        <p className="text-xs text-destructive text-center mt-2 mb-3">
           {error}
-        </motion.p>
+        </p>
       )}
 
       <button
         onClick={handleSubmit}
-        className="apple-btn mt-6"
         disabled={!isFilled || loading}
+        className="apple-btn mt-6"
       >
         {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verificar código'}
       </button>
 
-      <p className="text-xs text-center text-muted-foreground mt-4">
-        Use o código <span className="font-semibold text-foreground">123456</span> para testar
+      <p className="text-[11px] text-muted-foreground/70 text-center mt-4">
+        Dica de demonstração: use o código <span className="font-mono font-semibold">123456</span>
       </p>
     </motion.div>
   );

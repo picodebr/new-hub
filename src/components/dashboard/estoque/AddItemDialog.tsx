@@ -13,12 +13,25 @@ export interface NewItemPayload {
   reusable: boolean;
   isService: boolean;
   image: string;
+  file?: File | null;
 }
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onAdd: (item: NewItemPayload) => void;
+}
+
+function dataURLtoFile(dataurl: string, filename: string): File {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
 }
 
 const schema = z.object({
@@ -35,6 +48,7 @@ const AddItemDialog = ({ open, onClose, onAdd }: Props) => {
   const [isService, setIsService] = useState(false);
   const [image, setImage] = useState<string | null>(null);
   const [rawImage, setRawImage] = useState<string | null>(null);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
 
   const reset = () => {
@@ -44,6 +58,7 @@ const AddItemDialog = ({ open, onClose, onAdd }: Props) => {
     setIsService(false);
     setImage(null);
     setRawImage(null);
+    setFileToUpload(null);
     setCropOpen(false);
   };
 
@@ -62,6 +77,7 @@ const AddItemDialog = ({ open, onClose, onAdd }: Props) => {
       toast({ title: 'Imagem muito grande', description: 'Tamanho máximo: 5 MB.', variant: 'destructive' });
       return;
     }
+    setFileToUpload(file);
     const reader = new FileReader();
     reader.onload = e => {
       setRawImage(e.target?.result as string);
@@ -85,11 +101,9 @@ const AddItemDialog = ({ open, onClose, onAdd }: Props) => {
       quantity: result.data.quantity,
       reusable,
       isService,
-      image:
-        image ||
-        'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&h=300&fit=crop',
+      image: image || '',
+      file: fileToUpload,
     });
-    toast({ title: 'Item adicionado!', description: `"${result.data.name}" foi adicionado ao estoque.` });
     reset();
     onClose();
   };
@@ -247,6 +261,8 @@ const AddItemDialog = ({ open, onClose, onAdd }: Props) => {
           imageSrc={rawImage}
           onClose={() => setCropOpen(false)}
           onConfirm={(cropped) => {
+            const croppedFile = dataURLtoFile(cropped, fileToUpload?.name || 'item.png');
+            setFileToUpload(croppedFile);
             setImage(cropped);
             setCropOpen(false);
           }}

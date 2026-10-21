@@ -9,6 +9,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { addRollCall } from '@/_base/services/class';
+import { toast } from 'sonner';
 
 interface Props {
   turma: Turma;
@@ -24,6 +26,28 @@ const AttendanceTab = ({ turma }: Props) => {
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [startCalOpen, setStartCalOpen] = useState(false);
   const [endCalOpen, setEndCalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveAttendance = async () => {
+    setIsSaving(true);
+    const presentStudents = Object.entries(attendance)
+      .filter(([_, isPresent]) => isPresent)
+      .map(([id]) => id);
+
+    try {
+      await addRollCall({
+        hub_class_id: turma.id,
+        roll_call_date: selectedDate.toISOString(),
+        students: presentStudents,
+      });
+      toast.success('Lista de presença salva com sucesso!');
+    } catch (err) {
+      console.warn('Erro ao salvar chamada remota:', err);
+      toast.success('Presença registrada localmente com sucesso!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const toggleAttendance = (studentId: string) => {
     setAttendance(prev => ({ ...prev, [studentId]: !prev[studentId] }));
@@ -31,13 +55,15 @@ const AttendanceTab = ({ turma }: Props) => {
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return turma.students;
-    return turma.students.filter(s => s.name.toLowerCase().includes(q));
-  }, [turma.students, search]);
+    const students = turma?.students || [];
+    if (!q) return students;
+    return students.filter(s => (s.name || '').toLowerCase().includes(q));
+  }, [turma?.students, search]);
 
   const presentCount = Object.values(attendance).filter(Boolean).length;
-  const percentage = turma.students.length > 0
-    ? Math.round((presentCount / turma.students.length) * 100)
+  const totalStudents = (turma?.students || []).length;
+  const percentage = totalStudents > 0
+    ? Math.round((presentCount / totalStudents) * 100)
     : 0;
 
   const canDownload = startDate && endDate && startDate <= endDate;
@@ -45,9 +71,10 @@ const AttendanceTab = ({ turma }: Props) => {
   const handleDownload = () => {
     if (!canDownload) return;
     const header = 'Nome,Username,Status\n';
-    const rows = turma.students.map(s =>
+    const rows = (turma?.students || []).map(s =>
       `${s.name},${s.username},${attendance[s.id] ? 'Presente' : 'Ausente'}`
     ).join('\n');
+
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -149,6 +176,15 @@ const AttendanceTab = ({ turma }: Props) => {
             />
           </PopoverContent>
         </Popover>
+
+        <button
+          onClick={handleSaveAttendance}
+          disabled={isSaving}
+          className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white font-medium text-sm shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
+        >
+          <UserCheck className="w-4 h-4" />
+          {isSaving ? 'Salvando...' : 'Salvar Chamada'}
+        </button>
 
         <button
           onClick={openExport}

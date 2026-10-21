@@ -31,6 +31,8 @@ interface ShareProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectName: string;
+  initialIsPublished?: boolean;
+  onSavePermissions?: (newPermissions: any, isPublished: boolean) => void;
 }
 
 const ShareProjectDialog = ({ open, onOpenChange, projectName }: ShareProjectDialogProps) => {

@@ -1,0 +1,30 @@
+import { IBoard } from '../IBoard';
+
+export const arduinoNanoBoard: IBoard = {
+  name: 'Arduino Nano',
+  fqbn: 'arduino:avr:nano',
+  pins: [
+    { value: '0' },
+    { value: '1' },
+    { value: '2' },
+    { value: '3', isPWM: true },
+    { value: '4' },
+    { value: '5', isPWM: true },
+    { value: '6', isPWM: true },
+    { value: '7' },
+    { value: '8' },
+    { value: '9', isPWM: true },
+    { value: '10', isPWM: true },
+    { value: '11', isPWM: true },
+    { value: '12' },
+    { value: '13' },
+    { value: 'A0', isAnalog: true },
+    { value: 'A1', isAnalog: true },
+    { value: 'A2', isAnalog: true },
+    { value: 'A3', isAnalog: true },
+    { value: 'A4', isAnalog: true },
+    { value: 'A5', isAnalog: true },
+    { value: 'A6', isAnalog: true },
+    { value: 'A7', isAnalog: true },
+  ],
+};

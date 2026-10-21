@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '@/hooks/useUser';
+import { toast } from 'sonner';
 import AuthLogo from './AuthLogo';
 
 interface LoginFormProps {
@@ -14,7 +15,7 @@ const LoginForm = ({ onSignUp, onForgotPassword }: LoginFormProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -24,24 +25,42 @@ const LoginForm = ({ onSignUp, onForgotPassword }: LoginFormProps) => {
     emailRef.current?.focus();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email) {
+      toast.error('Informe seu e-mail ou nome de usuário');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const loggedUser = await login(email, password, rememberMe);
+      if (loggedUser) {
+        toast.success(`Bem-vindo, ${loggedUser.name}!`);
+        navigate('/dashboard');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Erro ao realizar login. Verifique suas credenciais.';
+      toast.error(msg);
+    } finally {
       setLoading(false);
-      login(email);
-      navigate('/dashboard');
-    }, 700);
+    }
   };
 
-  const quickLogin = (identifier: string) => {
+  const quickLogin = async (identifier: string) => {
     setEmail(identifier);
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const loggedUser = await login(identifier);
+      if (loggedUser) {
+        toast.success(`Entrando como ${loggedUser.name}...`);
+        navigate('/dashboard');
+      }
+    } catch (err: any) {
+      toast.error('Erro ao acessar com conta demo');
+    } finally {
       setLoading(false);
-      login(identifier);
-      navigate('/dashboard');
-    }, 300);
+    }
   };
 
   return (

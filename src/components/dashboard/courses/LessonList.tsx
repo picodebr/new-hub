@@ -1,7 +1,14 @@
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play, CheckCircle2, Clock } from 'lucide-react';
+import {
+  ArrowLeft,
+  Play,
+  CheckCircle2,
+  Clock,
+  HelpCircle,
+  GitMerge,
+  Compass,
+} from 'lucide-react';
 import { Module, Lesson, Course } from './coursesData';
-import { Progress } from '@/components/ui/progress';
 
 interface Props {
   course: Course;
@@ -14,6 +21,51 @@ const LessonList = ({ course, module, onBack, onSelectLesson }: Props) => {
   const watched = module.lessons.filter((l) => l.watched).length;
   const total = module.lessons.length;
   const percent = total > 0 ? Math.round((watched / total) * 100) : 0;
+
+  const renderTypeIcon = (type?: string, watched?: boolean) => {
+    if (watched) {
+      return <CheckCircle2 className="w-7 h-7 text-primary-foreground" strokeWidth={2} />;
+    }
+    switch (type) {
+      case 'quiz':
+        return <HelpCircle className="w-7 h-7 text-amber-300" strokeWidth={2} />;
+      case 'algorithm':
+        return <GitMerge className="w-7 h-7 text-indigo-300" strokeWidth={2} />;
+      case 'map':
+        return <Compass className="w-7 h-7 text-emerald-300" strokeWidth={2} />;
+      default:
+        return <Play className="w-7 h-7 text-white ml-0.5" strokeWidth={2} fill="currentColor" />;
+    }
+  };
+
+  const renderTypeBadge = (type?: string) => {
+    switch (type) {
+      case 'quiz':
+        return (
+          <span className="text-[10px] font-bold text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded-full ring-1 ring-amber-500/30">
+            Quiz
+          </span>
+        );
+      case 'algorithm':
+        return (
+          <span className="text-[10px] font-bold text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded-full ring-1 ring-indigo-500/30">
+            Algoritmo
+          </span>
+        );
+      case 'map':
+        return (
+          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full ring-1 ring-emerald-500/30">
+            Labirinto
+          </span>
+        );
+      default:
+        return (
+          <span className="text-[10px] font-bold text-sky-400 bg-sky-500/20 px-2 py-0.5 rounded-full ring-1 ring-sky-500/30">
+            Vídeo
+          </span>
+        );
+    }
+  };
 
   return (
     <motion.div
@@ -50,7 +102,7 @@ const LessonList = ({ course, module, onBack, onSelectLesson }: Props) => {
             onClick={() => onSelectLesson(lesson)}
             className="group relative glass-card rounded-3xl overflow-hidden text-left cursor-pointer border border-border/50 hover:border-primary/30 hover:shadow-xl transition-all duration-300"
           >
-            {/* Video "image" header */}
+            {/* Header Area */}
             <div className="p-3 pb-2 h-36">
               <div className="relative w-full h-full overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900">
                 {/* Subtle grid pattern */}
@@ -65,15 +117,17 @@ const LessonList = ({ course, module, onBack, onSelectLesson }: Props) => {
                 {/* Soft top-right glow */}
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.18),transparent_60%)]" />
 
-                {/* Status pill */}
-                {lesson.watched && (
-                  <div className="absolute top-3 right-3">
-                    <div className="flex items-center gap-1 bg-primary/85 backdrop-blur-md rounded-full px-2.5 py-1 ring-1 ring-white/20">
+                {/* Status pill & Type badge */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                  {renderTypeBadge(lesson.type)}
+
+                  {lesson.watched && (
+                    <div className="flex items-center gap-1 bg-primary/85 backdrop-blur-md rounded-full px-2.5 py-0.5 ring-1 ring-white/20">
                       <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                      <span className="text-[11px] font-semibold text-white">VISTO</span>
+                      <span className="text-[10px] font-bold text-white">VISTO</span>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {/* Duration pill */}
                 <div className="absolute bottom-3 right-3">
@@ -83,18 +137,14 @@ const LessonList = ({ course, module, onBack, onSelectLesson }: Props) => {
                   </div>
                 </div>
 
-                {/* Centered play/check emblem */}
+                {/* Centered play/icon emblem */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div
                     className={`w-14 h-14 rounded-2xl flex items-center justify-center backdrop-blur-md ring-1 ring-white/20 shadow-lg transition-transform duration-300 group-hover:scale-110 ${
                       lesson.watched ? 'bg-primary/30' : 'bg-white/15 group-hover:bg-white/25'
                     }`}
                   >
-                    {lesson.watched ? (
-                      <CheckCircle2 className="w-7 h-7 text-primary-foreground" strokeWidth={2} />
-                    ) : (
-                      <Play className="w-7 h-7 text-white ml-0.5" strokeWidth={2} fill="currentColor" />
-                    )}
+                    {renderTypeIcon(lesson.type, lesson.watched)}
                   </div>
                 </div>
               </div>

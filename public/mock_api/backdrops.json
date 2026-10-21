@@ -1,0 +1,48 @@
+[
+    {
+        "id": "padrao",
+        "name": "Fundo",
+        "url": "/svg/Backdrops/vazio.svg",
+        "tags": [
+            "natureza",
+            "exterior"
+        ]
+    },
+    {
+        "id": "florest",
+        "name": "Floresta",
+        "url": "/img/floresta.jpg",
+        "tags": [
+            "natureza",
+            "exterior"
+        ]
+    },
+    {
+        "id": "praca",
+        "name": "Praça",
+        "url": "/svg/Backdrops/praça.svg",
+        "tags": [
+            "exterior",
+            "brinquedos",
+            "natureza"
+        ]
+    },
+    {
+        "id": "jardim",
+        "name": "Jardim",
+        "url": "/svg/Backdrops/jardim.svg",
+        "tags": [
+            "exterior",
+            "natureza"
+        ]
+    },
+    {
+        "id": "escola",
+        "name": "Escola",
+        "url": "/svg/Backdrops/escola.svg",
+        "tags": [
+            "interior",
+            "educação"
+        ]
+    }
+]

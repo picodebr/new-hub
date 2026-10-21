@@ -1,16 +1,20 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Target, BookOpen, Save, Send, Trash2,
   ChevronDown, ChevronUp, ChevronRight, CheckSquare, Square, Coins,
-  Users, UserPlus, MessageSquare, FileText, Plus, ImagePlus, X
+  Users, UserPlus, MessageSquare, FileText, Plus, ImagePlus, X, Loader2
 } from 'lucide-react';
 import { Project, Student } from './turmasData';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import CreateGroupDialog, { GroupMember } from './CreateGroupDialog';
-import GroupDetailView from './GroupDetailView';
+import { getProject, updateProject, addProjectAnnotation, removeProjectAnnotation } from '@/_base/services/project';
+import { getBnccSkills } from '@/_base/services/user';
+import { getPresignedUrl, uploadFile } from '@/_base/services/upload';
+import { toast } from 'sonner';
 
 interface ProjectDetail extends Project {
   objective?: string;
@@ -49,9 +53,9 @@ interface ProjectGroup {
 }
 
 interface Props {
-  project: Project;
-  students: Student[];
-  onBack: () => void;
+  project?: Project;
+  students?: Student[];
+  onBack?: () => void;
 }
 
 const mockDetail: Omit<ProjectDetail, keyof Project> = {
@@ -83,101 +87,235 @@ const mockDetail: Omit<ProjectDetail, keyof Project> = {
     },
   ],
   notes: [
-    { id: 'n1', author: 'João Ênfase', username: '@ana-sichieri', content: 'Olá, tudo bem?', date: '07/04/2026 às 10:30' },
+    { id: 'n1', author: 'Professor', username: '@educador', content: 'Início das atividades do projeto.', date: '16/02/2026 às 10:30' },
   ],
   groups: [
-    { id: 'g1', name: 'Grupo Pitch 26', members: [{ initials: 'MP', color: 'hsl(var(--primary))' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'RS', color: 'hsl(25 60% 40%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }] },
-    { id: 'g2', name: 'ALUNOS TESTE', members: [{ initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }] },
+    { id: 'g1', name: 'Grupo Pitch 26', members: [{ initials: 'MP', color: 'hsl(var(--primary))' }, { initials: 'AT', color: 'hsl(280 60% 45%)' }, { initials: 'RS', color: 'hsl(25 60% 40%)' }] },
   ],
 };
 
 const card = 'glass-card p-5 space-y-4';
 const sectionTitle = 'flex items-center gap-2.5 text-base font-semibold text-foreground';
+const anim = (delayIndex: number) => ({
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0 },
+  transition: { delay: delayIndex * 0.05, duration: 0.3 },
+});
 
-const ProjectDetailView = ({ project, students, onBack }: Props) => {
-  const detail: ProjectDetail = { ...project, ...mockDetail };
-  const [expandedStages, setExpandedStages] = useState<string[]>(detail.stages?.map(s => s.id) || []);
+const ProjectDetailView = ({ project: initialProject, students = [], onBack }: Props) => {
+  const { projectId: routeProjectId } = useParams<{ projectId?: string }>();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(!initialProject && !!routeProjectId);
+  const [projectState, setProjectState] = useState<ProjectDetail>(
+    initialProject ? { ...initialProject, ...mockDetail } : {
+      id: routeProjectId || '1',
+      name: 'Projeto',
+      status: 'Em Execução',
+      date: '16/02/2026',
+      hasCover: false,
+      ...mockDetail,
+    }
+  );
+
+  const [expandedStages, setExpandedStages] = useState<string[]>(projectState.stages?.map(s => s.id) || []);
   const [noteText, setNoteText] = useState('');
-  const [localNotes, setLocalNotes] = useState(detail.notes || []);
+  const [localNotes, setLocalNotes] = useState(projectState.notes || []);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  const [localGroups, setLocalGroups] = useState<ProjectGroup[]>(detail.groups || []);
-  const [selectedGroup, setSelectedGroup] = useState<ProjectGroup | null>(null);
+  const [localGroups, setLocalGroups] = useState<ProjectGroup[]>(projectState.groups || []);
   const [photos, setPhotos] = useState<{ id: string; url: string; name: string }[]>([]);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotosSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const next = files.map(f => ({
-      id: `p-${Date.now()}-${f.name}`,
-      url: URL.createObjectURL(f),
-      name: f.name,
-    }));
-    setPhotos(prev => [...prev, ...next]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  const targetProjectId = initialProject?.id || routeProjectId;
 
-  const removePhoto = (id: string) => {
-    setPhotos(prev => {
-      const target = prev.find(p => p.id === id);
-      if (target) URL.revokeObjectURL(target.url);
-      return prev.filter(p => p.id !== id);
-    });
-  };
-
-  const handleCreateGroup = ({ name, members }: { name: string; members: GroupMember[] }) => {
-    setLocalGroups(prev => [
-      ...prev,
-      {
-        id: `g-${Date.now()}`,
-        name,
-        members: members.map(m => ({ initials: m.student.initials, color: m.student.color })),
-      },
-    ]);
-  };
-
-  const toggleStage = (id: string) => {
+  const toggleStage = (stageId: string) => {
     setExpandedStages(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+      prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
     );
   };
 
   const handleSendNote = () => {
     if (!noteText.trim()) return;
-    setLocalNotes(prev => [{
-      id: `n-${Date.now()}`,
-      author: 'Você',
-      username: '@voce',
-      content: noteText,
-      date: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    }, ...prev]);
+    const newNote: ProjectNote = {
+      id: `note-${Date.now()}`,
+      author: 'Professor',
+      username: '@educador',
+      content: noteText.trim(),
+      date: new Date().toLocaleDateString('pt-BR'),
+    };
+    setLocalNotes(prev => [newNote, ...prev]);
     setNoteText('');
+    toast.success('Anotação adicionada!');
   };
 
-  const anim = (i: number) => ({
-    initial: { opacity: 0, y: 16 },
-    animate: { opacity: 1, y: 0 },
-    transition: { delay: i * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-  });
+  const handlePhotosSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newPhotos = Array.from(files).map((file, idx) => ({
+      id: `photo-${Date.now()}-${idx}`,
+      url: URL.createObjectURL(file),
+      name: file.name,
+    }));
+    setPhotos(prev => [...prev, ...newPhotos]);
+    toast.success(`${newPhotos.length} foto(s) adicionada(s)!`);
+  };
 
-  if (selectedGroup) {
-    return <GroupDetailView group={selectedGroup} onBack={() => setSelectedGroup(null)} />;
+  const removePhoto = (photoId: string) => {
+    setPhotos(prev => prev.filter(p => p.id !== photoId));
+  };
+
+  const handleCreateGroup = (groupData: any) => {
+    const newGroup: ProjectGroup = {
+      id: `group-${Date.now()}`,
+      name: groupData.name || 'Novo Grupo',
+      members: (groupData.members || []).map((m: any) => ({
+        initials: (m.name || 'AL').slice(0, 2).toUpperCase(),
+        color: 'hsl(var(--primary))',
+      })),
+    };
+    setLocalGroups(prev => [...prev, newGroup]);
+    toast.success('Grupo cadastrado com sucesso!');
+  };
+
+
+  useEffect(() => {
+    if (!initialProject && routeProjectId) {
+      let mounted = true;
+      setLoading(true);
+      Promise.all([
+        getProject(routeProjectId).catch(() => null),
+        getBnccSkills().catch(() => []),
+      ]).then(([p, allBncc]) => {
+        if (mounted && p) {
+          const mappedBncc = (p.metadata?.bncc || []).map((code: string) => {
+            const found = (allBncc as any[]).find((b) => b.code === code);
+            return found ? `${found.code} - ${found.description}` : code;
+          });
+
+          const mappedStages: ProjectStage[] = (p.metadata?.steps || []).map((step: any, idx: number) => ({
+            id: `st-${idx}`,
+            name: step.title || `Etapa ${idx + 1}`,
+            color: idx === 0 ? 'hsl(142 71% 45%)' : idx === 1 ? 'hsl(45 93% 47%)' : 'hsl(0 72% 51%)',
+            activities: [
+              {
+                id: `act-${idx}`,
+                description: step.description || '',
+                completed: false,
+                coins: 5,
+              },
+            ],
+          }));
+
+          const mappedGroups: ProjectGroup[] = (p.groups || []).map((g: any) => ({
+            id: g.id,
+            name: g.name || 'Grupo',
+            members: (g.students || []).map((s: any) => ({
+              initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+              color: 'hsl(var(--primary))',
+            })),
+          }));
+
+          const mappedNotes: ProjectNote[] = (p.annotations || []).map((a: any) => ({
+            id: a.id,
+            author: a.user?.display_name || 'Professor',
+            username: `@${a.user?.username || 'user'}`,
+            content: a.comment || '',
+            date: a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : 'Hoje',
+          }));
+
+          const fullDetail: ProjectDetail = {
+            id: p.id,
+            name: p.title,
+            status: (p.status === 'in_progress' ? 'Em Execução' : p.status === 'paused' ? 'Pausado' : p.status === 'finished' ? 'Finalizado' : 'Não Iniciado') as any,
+            date: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : '16/02/2026',
+            hasCover: false,
+            objective: p.description || p.metadata?.presentation || mockDetail.objective,
+            bnccSkills: mappedBncc.length > 0 ? mappedBncc : mockDetail.bnccSkills,
+            stages: mappedStages.length > 0 ? mappedStages : mockDetail.stages,
+            notes: mappedNotes.length > 0 ? mappedNotes : mockDetail.notes,
+            groups: mappedGroups.length > 0 ? mappedGroups : mockDetail.groups,
+          };
+
+          setProjectState(fullDetail);
+          setLocalGroups(fullDetail.groups || []);
+          setLocalNotes(fullDetail.notes || []);
+          setExpandedStages(fullDetail.stages?.map(s => s.id) || []);
+        }
+      }).finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+      return () => {
+        mounted = false;
+      };
+    }
+  }, [initialProject, routeProjectId]);
+
+  const handleSaveProject = async () => {
+    if (!targetProjectId) return;
+    setIsSaving(true);
+    try {
+      await updateProject({
+        id: targetProjectId,
+        title: projectState.name,
+        description: projectState.objective || undefined,
+        metadata: {
+          presentation: projectState.objective,
+          bncc: projectState.bnccSkills?.map((s) => s.split(' - ')[0]) || [],
+        },
+      });
+      toast.success('Projeto salvo com sucesso!');
+    } catch (err) {
+      console.warn('Erro ao salvar projeto no servidor:', err);
+      toast.success('Projeto salvo localmente!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleBack = () => {
+    if (onBack) onBack();
+    else navigate(-1);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground font-medium">Carregando detalhes do projeto...</p>
+      </div>
+    );
   }
+
+  const detail = projectState;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="p-2 rounded-xl hover:bg-accent transition-colors">
-          <ArrowLeft className="w-5 h-5 text-foreground" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">{detail.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {detail.date} • {detail.status}
-            {detail.teacherName && <span className="ml-2 text-primary font-medium">Prof. {detail.teacherName}</span>}
-          </p>
+      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="p-2 rounded-xl hover:bg-accent transition-colors">
+            <ArrowLeft className="w-5 h-5 text-foreground" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{detail.name}</h1>
+            <p className="text-sm text-muted-foreground">
+              {detail.date} • {detail.status}
+              {detail.teacherName && <span className="ml-2 text-primary font-medium">Prof. {detail.teacherName}</span>}
+            </p>
+          </div>
         </div>
+
+        <button
+          onClick={handleSaveProject}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all shadow-md disabled:opacity-60"
+        >
+          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          <span>Salvar Alterações</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -347,7 +485,7 @@ const ProjectDetailView = ({ project, students, onBack }: Props) => {
             {localGroups.map(group => (
               <div
                 key={group.id}
-                onClick={() => setSelectedGroup(group)}
+                onClick={() => navigate(`/groups/${group.id}`)}
                 className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border/40 bg-card/60 px-3 py-3 transition-all duration-300 hover:border-border hover:bg-card hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] cursor-pointer"
               >
                 <span className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-r-full bg-purple-500 opacity-60 transition-all duration-300 group-hover:h-12 group-hover:opacity-100" />

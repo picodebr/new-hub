@@ -21,6 +21,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import StudentProfile, { StudentProfileData } from './StudentProfile';
+import { useParams, useNavigate } from 'react-router-dom';
+import { getGroupById } from '@/_base/services/group';
+import { getStockMaker } from '@/_base/services/storeMaker';
 
 interface GroupMemberInfo {
   id: string;
@@ -77,8 +80,8 @@ interface GroupData {
 }
 
 interface Props {
-  group: { id: string; name: string; members: { initials: string; color: string }[] };
-  onBack: () => void;
+  group?: { id: string; name: string; members: { initials: string; color: string }[] };
+  onBack?: () => void;
   variant?: 'teacher' | 'student';
 }
 
@@ -162,8 +165,46 @@ const buildMockData = (group: Props['group']): GroupData => {
 const formatCurrency = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const GroupDetailView = ({ group, onBack, variant = 'teacher' }: Props) => {
-  const data = useMemo(() => buildMockData(group), [group]);
+const GroupDetailView = ({ group: initialGroup, onBack, variant = 'teacher' }: Props) => {
+  const { groupId: routeGroupId } = useParams<{ groupId?: string }>();
+  const navigate = useNavigate();
+  const targetGroupId = initialGroup?.id || routeGroupId;
+  const [remoteGroup, setRemoteGroup] = useState<any>(null);
+  const [loading, setLoading] = useState(!initialGroup && !!routeGroupId);
+
+  useEffect(() => {
+    if (!initialGroup && routeGroupId) {
+      let mounted = true;
+      setLoading(true);
+      Promise.all([
+        getGroupById(routeGroupId).catch(() => null),
+        getStockMaker().catch(() => []),
+      ]).then(([g, stockData]) => {
+        if (mounted && g) {
+          setRemoteGroup(g);
+        }
+      }).finally(() => {
+        if (mounted) setLoading(false);
+      });
+      return () => { mounted = false; };
+    }
+  }, [initialGroup, routeGroupId]);
+
+  const activeGroup = useMemo(() => {
+    if (remoteGroup) {
+      return {
+        id: remoteGroup.id,
+        name: remoteGroup.name || 'Grupo',
+        members: (remoteGroup.students || []).map((s: any) => ({
+          initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+          color: 'hsl(var(--primary))',
+        })),
+      };
+    }
+    return initialGroup || { id: targetGroupId || '1', name: 'Grupo', members: [] };
+  }, [remoteGroup, initialGroup, targetGroupId]);
+
+  const data = useMemo(() => buildMockData(activeGroup), [activeGroup]);
   const tabs = variant === 'student' ? STUDENT_TABS : TEACHER_TABS;
   const [activeTab, setActiveTab] = useState<Tab>('Atividades');
   const [activities, setActivities] = useState<GroupActivity[]>(data.activities);
@@ -244,12 +285,23 @@ const GroupDetailView = ({ group, onBack, variant = 'teacher' }: Props) => {
   const removeActivity = (id: string) =>
     setActivities(prev => prev.filter(a => a.id !== id));
 
-  if (selectedMember) {
+  const handleBack = () => {
+    if (onBack) onBack();
+    else navigate(-1);
+  };
+
+  if (loading) {
     return (
-      <AnimatePresence mode="wait">
-        <StudentProfile student={selectedMember} onBack={() => setSelectedMember(null)} />
-      </AnimatePresence>
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground font-medium">Carregando dados do grupo...</p>
+      </div>
     );
+  }
+
+  if (selectedMember) {
+    navigate(`/students/${selectedMember.id}`);
+    setSelectedMember(null);
   }
 
   return (
@@ -262,7 +314,7 @@ const GroupDetailView = ({ group, onBack, variant = 'teacher' }: Props) => {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-6">
         <div className="flex items-center gap-3 flex-1">
-          <button onClick={onBack} className="p-2 rounded-xl hover:bg-accent transition-colors">
+          <button onClick={handleBack} className="p-2 rounded-xl hover:bg-accent transition-colors">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
           <div className="flex items-center gap-3">

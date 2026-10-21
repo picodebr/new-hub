@@ -1,0 +1,12 @@
+{
+  "modelName": "PiCode Vision Model",
+  "version": "1.0",
+  "date": "2026-04-13T14:04:21.723Z",
+  "labels": [
+    "Cachorro",
+    "Gato",
+    "Ave",
+    "Peixe",
+    "Humano"
+  ]
+}

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit } from 'lucide-react';
+import { Rocket, School as SchoolIcon } from 'lucide-react';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import DashboardNavbar from '@/components/dashboard/DashboardNavbar';
 import QuickGuide from '@/components/dashboard/QuickGuide';
@@ -8,26 +8,75 @@ import WelcomeVideo from '@/components/dashboard/WelcomeVideo';
 import RecentProjects from '@/components/dashboard/RecentProjects';
 import AccountSettings from '@/components/dashboard/AccountSettings';
 import MyCertificates from '@/components/dashboard/MyCertificates';
-import CoursesView from '@/components/dashboard/courses/CoursesView';
-import TurmasView from '@/components/dashboard/turmas/TurmasView';
-import StudentGroupsView from '@/components/dashboard/turmas/StudentGroupsView';
-import MeusCodigosView from '@/components/dashboard/meuscodigos/MeusCodigosView';
-import EstoqueView from '@/components/dashboard/estoque/EstoqueView';
-import BibliotecaView from '@/components/dashboard/biblioteca/BibliotecaView';
-import ComunidadeView from '@/components/dashboard/comunidade/ComunidadeView';
 import StudentHome from '@/components/dashboard/student/StudentHome';
 import { useTheme } from '@/hooks/useTheme';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useUser } from '@/hooks/useUser';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
-const Dashboard = () => {
+
+export const DashboardHome = () => {
+  const { user } = useUser();
+  const { isDark, toggle: toggleTheme } = useTheme();
+
+  if (user?.role === 'student') {
+    return <StudentHome />;
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="space-y-4 md:space-y-6 overflow-x-hidden"
+    >
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        <WelcomeVideo />
+        <MyCertificates />
+      </div>
+      <RecentProjects />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        <QuickGuide />
+        <AccountSettings isDark={isDark} onToggleTheme={toggleTheme} />
+      </div>
+    </motion.div>
+  );
+};
+
+interface DashboardProps {
+  initialNav?: string;
+}
+
+const Dashboard: React.FC<DashboardProps> = () => {
   const { isDark, toggle: toggleTheme } = useTheme();
   const isMobile = useIsMobile();
-  const { user } = useUser();
+  const { user, isLoadingSession, chosenSchool, isTeacher, isMaster } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeNav, setActiveNav] = useState('Home');
+
+  // Synchronize route with activeNav
+  const activeNav = useMemo(() => {
+    const path = location.pathname.toLowerCase();
+    if (path.includes('/courses')) return 'Cursos';
+    if (path.includes('/classes') || path.includes('/turmas') || path.includes('/projects') || path.includes('/students')) {
+      return user?.role === 'student' ? 'Meus Grupos' : 'Turmas';
+    }
+    if (path.includes('/groups')) return user?.role === 'student' ? 'Meus Grupos' : 'Turmas';
+    if (path.includes('/planner')) return 'Meus Planejamentos';
+    if (path.includes('/code')) return 'Code Lab';
+    if (path.includes('/vision-lab')) return 'Vision Lab';
+    if (path.includes('/stock')) return 'Estoque Maker';
+    if (path.includes('/library') || path.includes('/biblioteca')) return 'Biblioteca';
+    if (path.includes('/community') || path.includes('/comunidade')) return 'Comunidade';
+    if (path.includes('/reports')) return 'Relatórios';
+    if (path.includes('/ranking')) return 'Ranking';
+    if (path.includes('/events')) return 'Eventos';
+    if (path.includes('/support') || path.includes('/appointments')) return 'Suporte';
+    if (path.includes('/store') || path.includes('/coinstore')) return 'Loja';
+    return 'Home';
+  }, [location.pathname, user?.role]);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -40,15 +89,68 @@ const Dashboard = () => {
     return () => window.removeEventListener('picode:open-sidebar', open);
   }, []);
 
-  // Redirect unauthenticated users
+  // Redirect unauthenticated users ONLY after session verification completes
   useEffect(() => {
-    if (!user) navigate('/');
-  }, [user, navigate]);
+    if (!isLoadingSession && !user) {
+      navigate('/');
+    }
+  }, [user, isLoadingSession, navigate]);
 
-  // Reset to Home if active nav isn't available for current role
-  useEffect(() => {
-    setActiveNav('Home');
-  }, [user?.role]);
+  // Auth Guard: Block rendering children while session is validating
+  if (isLoadingSession) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center animate-pulse shadow-xl shadow-primary/10">
+          <Rocket className="w-8 h-8 text-primary animate-bounce" />
+        </div>
+        <p className="text-sm font-semibold text-muted-foreground animate-pulse">
+          Carregando plataforma PiCode...
+        </p>
+      </div>
+    );
+  }
+
+  // Not logged in (awaiting redirect)
+  if (!user) {
+    return null;
+  }
+
+  // School Guard: Teacher/Master must have their active school initialized
+  if ((isTeacher || isMaster) && !chosenSchool) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xl shadow-primary/10">
+          <SchoolIcon className="w-8 h-8 text-primary animate-pulse" />
+        </div>
+        <p className="text-sm font-semibold text-muted-foreground">
+          Carregando dados da escola ativa...
+        </p>
+      </div>
+    );
+  }
+
+  const handleNavChange = (navLabel: string) => {
+    const navRoutes: Record<string, string> = {
+      'Home': '/dashboard',
+      'Cursos': '/courses',
+      'Turmas': '/classes',
+      'Meus Grupos': '/groups',
+      'Meus Planejamentos': '/planner',
+      'Code Lab': '/code',
+      'Vision Lab': '/vision-lab',
+      'Estoque Maker': '/stock',
+      'Biblioteca': '/library',
+      'Comunidade': '/community',
+      'Relatórios': '/reports',
+      'Ranking': '/ranking',
+      'Eventos': '/events',
+      'Suporte': '/support',
+      'Loja': '/store',
+    };
+    const route = navRoutes[navLabel] || '/dashboard';
+    navigate(route);
+    if (isMobile) setSidebarOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-background transition-colors duration-300 overflow-x-hidden">
@@ -63,71 +165,18 @@ const Dashboard = () => {
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           activeNav={activeNav}
-          onNavChange={(nav) => {
-            setActiveNav(nav);
-            if (isMobile) setSidebarOpen(false);
-          }}
+          onNavChange={handleNavChange}
         />
 
         <main className={`flex-1 min-w-0 overflow-x-hidden transition-all duration-300 ${sidebarOpen && !isMobile ? 'xl:ml-64' : 'ml-0'}`}>
           <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto overflow-x-hidden">
-            {activeNav === 'Cursos' ? (
-              <CoursesView />
-            ) : activeNav === 'Meus Grupos' ? (
-              <StudentGroupsView />
-            ) : activeNav === 'Turmas' ? (
-              <TurmasView />
-            ) : activeNav === 'Code Lab' ? (
-              <MeusCodigosView />
-            ) : activeNav === 'Vision Lab' ? (
-              <MeusCodigosView
-                title="Vision Lab"
-                subtitle="Organize seus projetos de visão computacional"
-                icon={BrainCircuit}
-              />
-            ) : activeNav === 'Estoque Maker' ? (
-              <EstoqueView />
-            ) : activeNav === 'Biblioteca' ? (
-              <BibliotecaView />
-            ) : activeNav === 'Comunidade' ? (
-              <ComunidadeView />
-            ) : user?.role === 'student' ? (
-              <StudentHome />
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                className="space-y-4 md:space-y-6 overflow-x-hidden"
-              >
-                {/* Welcome + Video row */}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-                  <WelcomeVideo />
-                  <MyCertificates />
-                </div>
-                {/* Projects */}
-                <RecentProjects />
-                {/* Guide + Settings */}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-                  <QuickGuide />
-                  <AccountSettings isDark={isDark} onToggleTheme={toggleTheme} />
-                </div>
-              </motion.div>
-            )}
+            <ErrorBoundary fallbackTitle="Erro ao carregar esta tela">
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
-      </div>
 
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && isMobile && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      </div>
     </div>
   );
 };

@@ -1,29 +1,15 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { UserX, Coins, ChevronRight } from 'lucide-react';
 import { Turma } from './turmasData';
-import StudentProfile, { StudentProfileData } from './StudentProfile';
 
 interface Props {
   turma: Turma;
   onSelectionChange?: (selected: boolean) => void;
 }
 
-const StudentsTab = ({ turma, onSelectionChange }: Props) => {
-  const [selected, setSelected] = useState<StudentProfileData | null>(null);
-
-  const updateSelected = (s: StudentProfileData | null) => {
-    setSelected(s);
-    onSelectionChange?.(!!s);
-  };
-
-  if (selected) {
-    return (
-      <AnimatePresence mode="wait">
-        <StudentProfile student={selected} onBack={() => updateSelected(null)} />
-      </AnimatePresence>
-    );
-  }
+const StudentsTab = ({ turma }: Props) => {
+  const navigate = useNavigate();
 
   if (turma.students.length === 0) {
     return (
@@ -42,22 +28,13 @@ const StudentsTab = ({ turma, onSelectionChange }: Props) => {
       transition={{ duration: 0.3 }}
       className="space-y-2.5"
     >
-      {turma.students.map((student, i) => (
+      {(turma?.students || []).map((student, i) => (
+
         <motion.button
           type="button"
           key={student.id}
           data-tour="student-row"
-          onClick={() =>
-            updateSelected({
-              id: student.id,
-              name: student.name,
-              username: student.username,
-              initials: student.initials,
-              color: student.color,
-              coins: student.coins,
-              groups: student.groups,
-            })
-          }
+          onClick={() => navigate(`/students/${student.id}`)}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.03, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}

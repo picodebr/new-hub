@@ -1,0 +1,18 @@
+[
+    {
+        "id": "model_especies",
+        "name": "Classificador de Espécies",
+        "thumbnail": "/svg/cerebro.svg",
+        "modelJsonUrl": "/mock_api/model_especies/teachable-machine-model.json",
+        "modelBinUrl": "/mock_api/model_especies/teachable-machine-model.weights.bin",
+        "metadataUrl": "/mock_api/model_especies/metadata.json"
+    },
+    {
+        "id": "model_libras",
+        "name": "Classificador de Libras",
+        "thumbnail": "/svg/cerebro.svg",
+        "modelJsonUrl": "/mock_api/model_libras/teachable-machine-model.json",
+        "modelBinUrl": "/mock_api/model_libras/teachable-machine-model.weights.bin",
+        "metadataUrl": "/mock_api/model_libras/metadata.json"
+    }
+]

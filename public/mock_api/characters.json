@@ -1,0 +1,85 @@
+[
+    {
+        "id": "tobi",
+        "name": "Tobi",
+        "url": "/svg/spriteLibrary/Tobi/tobi_costume1.svg",
+        "tags": [
+            "animal",
+            "mascote"
+        ],
+        "costumes": [
+            {
+                "name": "tobi_costume1",
+                "url": "/svg/spriteLibrary/Tobi/tobi_costume1.svg"
+            },
+            {
+                "name": "tobi_costume2",
+                "url": "/svg/spriteLibrary/Tobi/tobi_costume2.svg"
+            }
+        ],
+        "sounds": [
+            {
+                "name": "Latido",
+                "url": "/song/tobi_sound.mp3",
+                "format": "mp3"
+            }
+        ]
+    },
+    {
+        "id": "maria",
+        "name": "Maria",
+        "url": "/svg/spriteLibrary/Maria/maria_costume1.svg",
+        "tags": [
+            "menina",
+            "criança"
+        ],
+        "costumes": [
+            {
+                "name": "maria_costume1",
+                "url": "/svg/spriteLibrary/Maria/maria_costume1.svg"
+            },
+            {
+                "name": "maria_costume2",
+                "url": "/svg/spriteLibrary/Maria/maria_costume2.svg"
+            }
+        ]
+    },
+    {
+        "id": "robo",
+        "name": "Robô",
+        "url": "/svg/spriteLibrary/Robo/robo_costume1.svg",
+        "tags": [
+            "robô",
+            "tecnologia"
+        ],
+        "costumes": [
+            {
+                "name": "robo_costume1",
+                "url": "/svg/spriteLibrary/Robo/robo_costume1.svg"
+            },
+            {
+                "name": "robo_costume2",
+                "url": "/svg/spriteLibrary/Robo/robo_costume2.svg"
+            }
+        ]
+    },
+    {
+        "id": "joao",
+        "name": "João",
+        "url": "/svg/spriteLibrary/Joao/joão_costume1.svg",
+        "tags": [
+            "menino",
+            "criança"
+        ],
+        "costumes": [
+            {
+                "name": "joão_costume1",
+                "url": "/svg/spriteLibrary/Joao/joão_costume1.svg"
+            },
+            {
+                "name": "joão_costume2",
+                "url": "/svg/spriteLibrary/Joao/joão_costume2.svg"
+            }
+        ]
+    }
+]

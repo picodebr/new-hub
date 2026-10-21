@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { checkPrimaryCode } from '@/_base/services/user';
 import AuthLogo from './AuthLogo';
+import { toast } from 'sonner';
 
 interface CodeInputProps {
   profile: 'student' | 'teacher';
@@ -27,13 +29,14 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
 
   const handleChange = (index: number, value: string) => {
     if (error) setError('');
-    if (!/^\d*$/.test(value)) return;
+    const char = value.slice(-1).toUpperCase();
+    if (!/^[A-Z0-9]*$/.test(char)) return;
 
     const newCode = [...code];
-    newCode[index] = value.slice(-1);
+    newCode[index] = char;
     setCode(newCode);
 
-    if (value && index < 3) {
+    if (char && index < 3) {
       refs[index + 1].current?.focus();
     }
   };
@@ -46,7 +49,7 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    const pasted = e.clipboardData.getData('text').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase();
     if (pasted.length === 4) {
       setCode(pasted.split(''));
       refs[3].current?.focus();
@@ -55,19 +58,33 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
 
   const isFilled = code.every((d) => d !== '');
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    const fullCode = code.join('');
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      // Simulate: code "1234" is valid
-      if (code.join('') === '1234') {
-        onSubmit(code.join(''));
+    try {
+      const res = await checkPrimaryCode(profile, fullCode);
+      if (res?.is_valid) {
+        toast.success('Código validado com sucesso!');
+        onSubmit(fullCode);
       } else {
-        setError('Código inválido ou não encontrado');
+        setError('Código inválido ou não encontrado.');
         setShake(true);
         setTimeout(() => setShake(false), 500);
       }
-    }, 1500);
+    } catch (err: any) {
+      // Dev/fallback se backend offline
+      if (fullCode === '1234') {
+        toast.info('Modo Dev: Código 1234 aceito como demonstração');
+        onSubmit(fullCode);
+        return;
+      }
+      const msg = err?.response?.data?.message || 'Código inválido ou não encontrado.';
+      setError(msg);
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const subtitle =
@@ -98,27 +115,24 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
       <p className="text-sm text-center text-muted-foreground mb-8">{subtitle}</p>
 
       <div className={`flex justify-center gap-3 mb-2 ${shake ? 'animate-shake' : ''}`}>
-        {code.map((digit, i) => (
-          <motion.input
-            key={i}
-            ref={refs[i]}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + i * 0.08 }}
+        {code.map((digit, idx) => (
+          <input
+            key={idx}
+            ref={refs[idx]}
             type="text"
-            inputMode="numeric"
+            inputMode="text"
             maxLength={1}
             value={digit}
-            onChange={(e) => handleChange(i, e.target.value)}
-            onKeyDown={(e) => handleKeyDown(i, e)}
-            onPaste={i === 0 ? handlePaste : undefined}
-            className={`w-14 h-14 md:w-[60px] md:h-[60px] text-center text-xl font-semibold rounded-xl transition-all duration-200 outline-none ${
+            onChange={(e) => handleChange(idx, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(idx, e)}
+            onPaste={idx === 0 ? handlePaste : undefined}
+            className={`w-14 h-16 text-center text-2xl font-bold rounded-2xl border bg-card/60 text-foreground transition-all duration-200 outline-none uppercase ${
               error
-                ? 'bg-destructive/10 border-2 border-destructive/50'
+                ? 'border-destructive ring-2 ring-destructive/20'
                 : digit
-                ? 'bg-input-hover border-2 border-transparent'
-                : 'bg-input border-2 border-transparent'
-            } focus:border-primary focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.25)]`}
+                ? 'border-primary ring-2 ring-primary/20'
+                : 'border-border/60 focus:border-primary focus:ring-2 focus:ring-primary/20'
+            }`}
           />
         ))}
       </div>
@@ -127,7 +141,7 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
         <motion.p
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-sm text-destructive text-center mt-2"
+          className="text-xs text-destructive text-center mt-2 mb-4"
         >
           {error}
         </motion.p>
@@ -135,14 +149,15 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
 
       <button
         onClick={handleSubmit}
-        className="apple-btn mt-6"
         disabled={!isFilled || loading}
+        className="apple-btn mt-6"
       >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Avançar'}
+        {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verificar código'}
       </button>
 
-      <p className="text-xs text-center text-muted-foreground mt-4">
-        Use o código <span className="font-semibold text-foreground">1234</span> para testar
+      {/* Dica para dev */}
+      <p className="text-[11px] text-muted-foreground/70 text-center mt-4">
+        Dica de demonstração: use o código <span className="font-mono font-semibold">1234</span>
       </p>
     </motion.div>
   );

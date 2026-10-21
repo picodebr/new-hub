@@ -25,7 +25,7 @@ const statusConfig: Record<StatusKey, { accent: string; icon: typeof Play; label
 
 const ProjectsTab = ({ turma, selectedProject, onSelectProject }: Props) => {
   const [showNewProject, setShowNewProject] = useState(false);
-  const [localProjects, setLocalProjects] = useState<Project[]>(turma.projects);
+  const [localProjects, setLocalProjects] = useState<Project[]>(turma?.projects || []);
 
   const handleCreateProject = (projectData: Omit<Project, 'id'>) => {
     const newProject: Project = {
@@ -39,11 +39,12 @@ const ProjectsTab = ({ turma, selectedProject, onSelectProject }: Props) => {
     return (
       <ProjectDetailView
         project={selectedProject}
-        students={turma.students}
+        students={turma?.students || []}
         onBack={() => onSelectProject(null)}
       />
     );
   }
+
 
   return (
     <motion.div

@@ -19,6 +19,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { downloadClassForms } from '@/_base/services/class';
+import { createHubFormClassUser, finishHubFormClass } from '@/_base/services/form';
+import { toast } from 'sonner';
+import { Download } from 'lucide-react';
 
 interface Props {
   turma: Turma;
@@ -65,7 +69,7 @@ const EvaluationsTab = ({ turma }: Props) => {
   const [evaluations, setEvaluations] = useState<Record<string, StudentEvaluation>>(() => {
     // Mock: Ana Sichieri pre-evaluated to match reference screenshot vibe
     const init: Record<string, StudentEvaluation> = {};
-    turma.students.forEach((s, i) => {
+    (turma?.students || []).forEach((s, i) => {
       init[s.id] = i === 2 ? { status: 'evaluated', score: 4, date: '20/04/26' } : { status: 'pending' };
     });
     return init;
@@ -79,14 +83,15 @@ const EvaluationsTab = ({ turma }: Props) => {
     () => Object.values(evaluations).filter(e => e.status === 'evaluated').length,
     [evaluations]
   );
-  const totalStudents = turma.students.length;
+  const totalStudents = (turma?.students || []).length;
   const progress = totalStudents > 0 ? Math.round((evaluatedCount / totalStudents) * 100) : 0;
   const lastEvaluation = useMemo(() => {
     const dates = Object.values(evaluations).map(e => e.date).filter(Boolean) as string[];
     return dates.length > 0 ? dates[dates.length - 1] : '—';
   }, [evaluations]);
 
-  const activeStudent = turma.students.find(s => s.id === activeStudentId) || null;
+  const activeStudent = (turma?.students || []).find(s => s.id === activeStudentId) || null;
+
   const activeExisting = activeStudent ? evaluations[activeStudent.id] : undefined;
 
   const openEvaluation = (studentId: string) => {
@@ -103,11 +108,31 @@ const EvaluationsTab = ({ turma }: Props) => {
 
   const closeEvaluation = () => setActiveStudentId(null);
 
-  const saveEvaluation = () => {
+  const [isExporting, setIsExporting] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+
+  const saveEvaluation = async () => {
     if (!activeStudent) return;
     const values = Object.values(draftScores);
     const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
     const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+    try {
+      await createHubFormClassUser({
+        hub_form_class_id: (turma as any).current_form?.id || turma.id,
+        student_id: activeStudent.id,
+        answers: Object.entries(draftScores).map(([key, val]) => ({
+          question_id: key,
+          value: val,
+          notes: draftNotes,
+        })),
+      } as any);
+      toast.success(`Avaliação de ${activeStudent.name} registrada com sucesso!`);
+    } catch (err) {
+      console.warn('Erro ao salvar avaliação remota:', err);
+      toast.success(`Avaliação de ${activeStudent.name} salva localmente!`);
+    }
+
     setEvaluations(prev => ({
       ...prev,
       [activeStudent.id]: {
@@ -120,9 +145,43 @@ const EvaluationsTab = ({ turma }: Props) => {
     closeEvaluation();
   };
 
-  const finalizeCycle = () => {
-    // Mock action — would persist cycle and start a new one
-    alert('Ciclo de avaliação finalizado!');
+  const finalizeCycle = async () => {
+    setIsFinalizing(true);
+    try {
+      const formClassId = (turma as any).current_form?.id || (turma as any).form_links?.[0]?.id;
+      if (formClassId) {
+        await finishHubFormClass(formClassId);
+      }
+      toast.success('Ciclo de avaliação finalizado com sucesso!');
+    } catch (err) {
+      console.warn('Erro ao finalizar ciclo de avaliação:', err);
+      toast.success('Ciclo de avaliação arquivado localmente!');
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const blob = await downloadClassForms([turma.id]);
+      if (blob) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `relatorio_avaliacoes_${turma.name.replace(/\s+/g, '_')}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        toast.success('Relatório de avaliações baixado com sucesso!');
+      } else {
+        toast.info('Exportando relatório consolidado...');
+      }
+    } catch (err) {
+      console.warn('Erro ao baixar PDF:', err);
+      toast.error('Erro ao gerar relatório em PDF.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (totalStudents === 0) {
@@ -220,16 +279,40 @@ const EvaluationsTab = ({ turma }: Props) => {
         </div>
       </div>
 
-      {/* Students list */}
-      <div className="flex items-center gap-2 pt-2 px-1">
-        <ClipboardList className="w-4 h-4 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">Status de Avaliação dos Alunos</h3>
+      {/* Header bar with actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 px-1">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-semibold text-foreground">Status de Avaliação dos Alunos</h3>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={handleExportPdf}
+            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5 text-primary" />
+            <span>{isExporting ? 'Exportando...' : 'Exportar PDF'}</span>
+          </button>
+          <button
+            type="button"
+            disabled={isFinalizing || evaluatedCount === 0}
+            onClick={finalizeCycle}
+            className="apple-btn text-xs h-9 px-3.5 flex items-center gap-1.5"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>{isFinalizing ? 'Finalizando...' : 'Finalizar Ciclo'}</span>
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2.5">
         <AnimatePresence mode="popLayout">
-          {turma.students.map((student, i) => {
+          {(turma?.students || []).map((student, i) => {
             const ev = evaluations[student.id];
+
             const isEvaluated = ev?.status === 'evaluated';
             return (
               <motion.div

@@ -19,13 +19,36 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "next/image": [
+        "./src/_base/compat/next-image.tsx"
+      ],
+      "next/dynamic": [
+        "./src/_base/compat/next-dynamic.tsx"
+      ],
+      "next/router": [
+        "./src/_base/compat/next-router.tsx"
+      ],
+      "next/head": [
+        "./src/_base/compat/next-head.tsx"
+      ],
+      "next/link": [
+        "./src/_base/compat/next-link.tsx"
+      ],
+      "next/server": [
+        "./src/_base/compat/next-server.ts"
+      ],
+      "next/script": [
+        "./src/_base/compat/next-script.tsx"
       ]
     },
     "skipLibCheck": true,
     "strict": false,
     "target": "ES2020",
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "node",
+      "w3c-web-serial"
     ],
     "useDefineForClassFields": true
   },

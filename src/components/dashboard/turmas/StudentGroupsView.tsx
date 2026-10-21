@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, ArrowUpRight } from 'lucide-react';
-import { availableTurmas } from './turmasData';
+import { Plus, Users, ArrowUpRight, Loader2 } from 'lucide-react';
 import StudentCreateGroupDialog, { GroupMember } from './StudentCreateGroupDialog';
-import GroupDetailView from './GroupDetailView';
+import { useUser } from '@/hooks/useUser';
+import { listStudentGroups, listTeacherGroups, createGroup } from '@/_base/services/group';
+import { listAvailableProjectsForStudent } from '@/_base/services/project';
+import { toast } from 'sonner';
 
 interface StudentGroup {
   id: string;
@@ -28,70 +31,99 @@ const accentFor = (id: string) => {
   return ACCENTS[h % ACCENTS.length];
 };
 
-// Mock: aluno faz parte da Turma 7º ano (id '10')
-const STUDENT_TURMA_ID = '10';
-const STUDENT_TURMA = availableTurmas.find(t => t.id === STUDENT_TURMA_ID)!;
-// Mock: aluno logado é o primeiro estudante da turma
-const CURRENT_STUDENT = STUDENT_TURMA.students[0];
-
-const INITIAL_GROUPS: StudentGroup[] = [
-  {
-    id: 'g1', name: 'Grupo Pitch 26', projectName: 'Pitch Deck', turmaName: STUDENT_TURMA.name,
-    membersCount: 4,
-    members: [
-      { id: 'm1', initials: 'AM', color: 'hsl(211 100% 50%)' },
-      { id: 'm2', initials: 'TT', color: 'hsl(280 70% 55%)' },
-      { id: 'm3', initials: 'AT', color: 'hsl(160 70% 42%)' },
-      { id: 'm4', initials: 'RS', color: 'hsl(25 90% 55%)' },
-    ],
-  },
-  {
-    id: 'g2', name: 'Projeto Teste 2025 v2', projectName: 'MVP', turmaName: STUDENT_TURMA.name,
-    membersCount: 3,
-    members: [
-      { id: 'm1', initials: 'AM', color: 'hsl(211 100% 50%)' },
-      { id: 'm5', initials: 'AT', color: 'hsl(340 75% 55%)' },
-      { id: 'm6', initials: 'RS', color: 'hsl(200 85% 48%)' },
-    ],
-  },
-];
-
 const StudentGroupsView = () => {
-  const [groups, setGroups] = useState<StudentGroup[]>(INITIAL_GROUPS);
+  const { user, chosenSchool, isStudent } = useUser();
+  const navigate = useNavigate();
+  const [groups, setGroups] = useState<StudentGroup[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<StudentGroup | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleCreate = ({ name, projectId, members }: { name: string; projectId: string; members: GroupMember[] }) => {
-    const project = STUDENT_TURMA.projects.find(p => p.id === projectId);
-    const newGroup: StudentGroup = {
-      id: `g${Date.now()}`,
-      name,
-      projectName: project?.name ?? 'Projeto',
-      turmaName: STUDENT_TURMA.name,
-      membersCount: members.length,
-      members: members.slice(0, 4).map(m => ({
-        id: m.student.id,
-        initials: m.student.initials,
-        color: m.student.color,
-      })),
+  const activeSchoolId = chosenSchool?.hub_school_id || user?.chosen_school_id || '';
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    const loadData = async () => {
+      try {
+        if (isStudent) {
+          const [remoteGroups, projects] = await Promise.all([
+            listStudentGroups().catch(() => []),
+            listAvailableProjectsForStudent().catch(() => []),
+          ]);
+
+          if (mounted) {
+            setAvailableProjects(projects || []);
+            const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
+              id: g.id,
+              name: g.name || 'Grupo',
+              projectName: g.project?.title || 'Projeto',
+              turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || 'Turma',
+              membersCount: g.students?.length || g.student_links?.length || 0,
+              members: (g.students || []).map((s: any) => ({
+                id: s.id,
+                initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+                color: accentFor(s.id || '1'),
+              })),
+            }));
+            setGroups(mapped);
+          }
+        } else if (activeSchoolId) {
+          const remoteGroups = await listTeacherGroups(activeSchoolId).catch(() => []);
+          if (mounted) {
+            const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
+              id: g.id,
+              name: g.name || 'Grupo',
+              projectName: g.project?.title || 'Projeto',
+              turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || 'Turma',
+              membersCount: g.students?.length || 0,
+              members: (g.students || []).map((s: any) => ({
+                id: s.id,
+                initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+                color: accentFor(s.id || '1'),
+              })),
+            }));
+            setGroups(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar grupos:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
-    setGroups(prev => [newGroup, ...prev]);
+
+    loadData();
+    return () => {
+      mounted = false;
+    };
+  }, [isStudent, activeSchoolId]);
+
+  const handleCreate = async ({ name, projectId, members }: { name: string; projectId: string; members: GroupMember[] }) => {
+    try {
+      const created = await createGroup({
+        name,
+        project_id: projectId,
+        members: members.map((m) => ({ hub_user_id: m.student.id, role: m.role as any })),
+      } as any);
+
+      toast.success('Grupo criado com sucesso!');
+      if (created) {
+        navigate(`/groups/${created.id}`);
+      }
+    } catch (err) {
+      console.warn('Erro ao criar grupo na API:', err);
+      toast.error('Erro ao criar grupo');
+    }
   };
 
-  if (selectedGroup) {
+  if (loading) {
     return (
-      <AnimatePresence mode="wait">
-        <GroupDetailView
-          key={selectedGroup.id}
-          group={{
-            id: selectedGroup.id,
-            name: selectedGroup.name,
-            members: selectedGroup.members.map(m => ({ initials: m.initials, color: m.color })),
-          }}
-          onBack={() => setSelectedGroup(null)}
-          variant="student"
-        />
-      </AnimatePresence>
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground font-medium">Carregando grupos...</p>
+      </div>
     );
   }
 
@@ -151,7 +183,7 @@ const StudentGroupsView = () => {
                 <motion.button
                   type="button"
                   key={g.id}
-                  onClick={() => setSelectedGroup(g)}
+                  onClick={() => navigate(`/groups/${g.id}`)}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
@@ -233,11 +265,23 @@ const StudentGroupsView = () => {
       <StudentCreateGroupDialog
         open={showCreate}
         onOpenChange={setShowCreate}
-        currentStudent={CURRENT_STUDENT}
-        availableStudents={STUDENT_TURMA.students.filter(s => s.id !== CURRENT_STUDENT.id)}
-        availableProjects={STUDENT_TURMA.projects.filter(p => p.status !== 'Finalizado')}
+        currentStudent={{
+          id: user?.id || 'curr-student',
+          name: user?.display_name || user?.name || 'Eu',
+          status: 'Presente',
+          avatar: user?.avatar || '',
+        } as any}
+        availableStudents={[]}
+        availableProjects={(availableProjects || []).map((p: any) => ({
+          id: p.id || 'p-1',
+          name: p.title || p.name || 'Projeto',
+          status: p.status || 'Em Execução',
+          date: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : 'Hoje',
+          hasCover: false,
+        })) as any}
         onCreate={handleCreate}
       />
+
     </>
   );
 };

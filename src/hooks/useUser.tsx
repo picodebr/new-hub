@@ -1,80 +1,118 @@
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { useEffect, useMemo, ReactNode, useCallback } from 'react';
+import { IHubUser } from '@/_base/interfaces/user';
+import { IHubUserSchool, IHubSchoolGroup } from '@/_base/interfaces/school';
+import { useAuthStore, ExtendedHubUser } from '@/_base/stores/authStore';
+import { RedefinePasswordDialog } from '@/components/auth/RedefinePasswordDialog';
+import { useState } from 'react';
 
-export type UserRole = 'student' | 'teacher';
+export type UserRole = 'student' | 'teacher' | 'master';
+export type { ExtendedHubUser };
 
-export interface MockUser {
-  username: string;
-  email: string;
-  name: string;
-  initial: string;
-  role: UserRole;
-}
-
-export const MOCK_USERS: MockUser[] = [
-  {
-    username: 'prof@picode',
-    email: 'professor@picode.com.br',
-    name: 'João Ênfáse',
-    initial: 'J',
-    role: 'teacher',
-  },
-  {
-    username: 'aluno@picode',
-    email: 'aluno@picode.com.br',
-    name: 'Ana Maker',
-    initial: 'A',
-    role: 'student',
-  },
-];
-
-interface UserContextValue {
-  user: MockUser | null;
-  login: (identifier: string) => MockUser | null;
+export interface UserContextValue {
+  user: ExtendedHubUser | null;
+  login: (identifier: string, password?: string, rememberMe?: boolean) => Promise<ExtendedHubUser | null>;
+  loginWithGoogle: (accessToken: string) => Promise<ExtendedHubUser | null>;
   logout: () => void;
+  setUser: (user: ExtendedHubUser | null) => void;
+  refreshUser: () => Promise<ExtendedHubUser | null>;
+  chosenSchool: IHubUserSchool | null;
+  setChosenSchool: (schoolId: string) => Promise<void>;
+  chosenSchoolGroup: IHubSchoolGroup | null;
+  setChosenSchoolGroup: (groupId: string) => Promise<void>;
+  schools: IHubUserSchool[];
+  schoolGroups: IHubSchoolGroup[];
+  isLoading: boolean;
+  isLoadingSession: boolean;
+  isMaster: boolean;
+  isTeacher: boolean;
+  isStudent: boolean;
 }
-
-const UserContext = createContext<UserContextValue | undefined>(undefined);
-
-const STORAGE_KEY = 'picode.currentUser';
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<MockUser | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as MockUser) : null;
-    } catch {
-      return null;
-    }
-  });
+  const user = useAuthStore((s) => s.user);
+  const isLoadingSession = useAuthStore((s) => s.isLoadingSession);
+  const school = useAuthStore((s) => s.school);
+  const schools = useAuthStore((s) => s.schools);
+  const schoolGroups = useAuthStore((s) => s.schoolGroups);
+  const selectedSchoolGroup = useAuthStore((s) => s.selectedSchoolGroup);
+  const initSession = useAuthStore((s) => s.initSession);
+  const changeSchool = useAuthStore((s) => s.changeSchool);
+  const changeSchoolGroup = useAuthStore((s) => s.changeSchoolGroup);
+  const setUser = useAuthStore((s) => s.setUser);
+
+  const [showRedefineDialog, setShowRedefineDialog] = useState(false);
 
   useEffect(() => {
-    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    else localStorage.removeItem(STORAGE_KEY);
+    initSession();
+  }, [initSession]);
+
+  useEffect(() => {
+    if (user?.metadata?.redefine_password) {
+      setShowRedefineDialog(true);
+    }
   }, [user]);
 
-  const value = useMemo<UserContextValue>(
-    () => ({
-      user,
-      login: (identifier: string) => {
-        const id = identifier.trim().toLowerCase();
-        const found =
-          MOCK_USERS.find((u) => u.username.toLowerCase() === id) ||
-          MOCK_USERS.find((u) => u.email.toLowerCase() === id) ||
-          // fallback: any input containing "aluno" → student, else teacher
-          (id.includes('aluno') ? MOCK_USERS.find((u) => u.role === 'student')! : MOCK_USERS.find((u) => u.role === 'teacher')!);
-        setUser(found ?? null);
-        return found ?? null;
-      },
-      logout: () => setUser(null),
-    }),
-    [user]
+  return (
+    <>
+      {children}
+      {user && (
+        <RedefinePasswordDialog
+          open={showRedefineDialog}
+          userName={user.name}
+          onSuccess={() => {
+            setShowRedefineDialog(false);
+            if (user.metadata) {
+              user.metadata.redefine_password = false;
+              setUser({ ...user });
+            }
+          }}
+        />
+      )}
+    </>
   );
-
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 };
 
-export const useUser = () => {
-  const ctx = useContext(UserContext);
-  if (!ctx) throw new Error('useUser must be used within UserProvider');
-  return ctx;
+export const useUser = (): UserContextValue => {
+  const user = useAuthStore((s) => s.user);
+  const isLoadingSession = useAuthStore((s) => s.isLoadingSession);
+  const isLoadingSchool = useAuthStore((s) => s.isLoadingSchool);
+  const school = useAuthStore((s) => s.school);
+  const schools = useAuthStore((s) => s.schools);
+  const schoolGroups = useAuthStore((s) => s.schoolGroups);
+  const selectedSchoolGroup = useAuthStore((s) => s.selectedSchoolGroup);
+  const setUser = useAuthStore((s) => s.setUser);
+  const initSession = useAuthStore((s) => s.initSession);
+  const changeSchool = useAuthStore((s) => s.changeSchool);
+  const changeSchoolGroup = useAuthStore((s) => s.changeSchoolGroup);
+  const login = useAuthStore((s) => s.login);
+  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
+  const logout = useAuthStore((s) => s.logout);
+
+  const role = user?.role || 'student';
+  const isMaster = role === 'master';
+  const isTeacher = role === 'teacher' || role === 'master';
+  const isStudent = role === 'student';
+
+  return {
+    user,
+    login,
+    loginWithGoogle,
+    logout,
+    setUser,
+    refreshUser: initSession,
+    chosenSchool: school,
+    setChosenSchool: changeSchool,
+    chosenSchoolGroup: selectedSchoolGroup,
+    setChosenSchoolGroup: changeSchoolGroup,
+    schools,
+    schoolGroups,
+    isLoading: isLoadingSession || isLoadingSchool,
+    isLoadingSession,
+    isMaster,
+    isTeacher,
+    isStudent,
+  };
 };
+
+export { useSelectedSchool } from '@/hooks/useSelectedSchool';
+export default useUser;

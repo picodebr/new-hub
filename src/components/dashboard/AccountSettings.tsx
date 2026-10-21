@@ -1,36 +1,111 @@
-import { useState, useRef, KeyboardEvent } from 'react';
+import { useState, useRef, KeyboardEvent, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Moon, Sun, Pencil, Check, User, Mail, Camera, BookOpen, FileText, X } from 'lucide-react';
+import { Settings, Moon, Sun, Pencil, Check, User, Mail, Camera, BookOpen, FileText, X, KeyRound, Loader2 } from 'lucide-react';
+import { useUser } from '@/hooks/useUser';
+import { updateProfile } from '@/_base/services/user';
+import { getPresignedUrl, uploadFile } from '@/_base/services/upload';
+import { RedefinePasswordDialog } from '@/components/auth/RedefinePasswordDialog';
+import { toast } from 'sonner';
 
 interface Props {
   isDark: boolean;
   onToggleTheme: () => void;
 }
 
+const AVAILABLE_DISCIPLINES = [
+  'Robótica', 'Programação', 'Maker', 'Matemática', 'Física',
+  'Química', 'Biologia', 'Artes', 'Ciências', 'História',
+];
+
 const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
-  const [name, setName] = useState('João Ênfáse');
-  const [email, setEmail] = useState('ana@picode.com.br');
-  const [bio, setBio] = useState('Apaixonado por tecnologia e educação maker.');
+  const { user, setUser } = useUser();
+
+  const [name, setName] = useState(user?.name || 'Professor PiCode');
+  const [email, setEmail] = useState(user?.email || 'professor@picode.com.br');
+  const [bio, setBio] = useState(user?.bio || 'Apaixonado por tecnologia e educação maker.');
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>(['Robótica', 'Programação']);
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingBio, setEditingBio] = useState(false);
   const [showDisciplines, setShowDisciplines] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatar || null);
 
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>, close: () => void) => {
-    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); close(); }
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+      if (user.bio) setBio(user.bio);
+      if (user.avatar) setAvatarUrl(user.avatar);
+    }
+  }, [user]);
+
+  const saveProfileData = async (fields: { name?: string; email?: string; bio?: string; avatar?: string }) => {
+    try {
+      await updateProfile(fields);
+      if (user) {
+        setUser({ ...user, ...fields });
+      }
+      toast.success('Perfil atualizado com sucesso!');
+    } catch (err) {
+      console.warn('Erro ao atualizar perfil na API:', err);
+      if (user) {
+        setUser({ ...user, ...fields });
+      }
+      toast.info('Alteração salva localmente');
+    }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleKey = (e: KeyboardEvent<HTMLInputElement>, close: () => void, fieldKey?: 'name' | 'email') => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      close();
+      if (fieldKey === 'name') saveProfileData({ name });
+      if (fieldKey === 'email') saveProfileData({ email });
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (ev.target?.result) setAvatarUrl(ev.target.result as string);
-    };
-    reader.readAsDataURL(file);
+
+    setUploadingAvatar(true);
+    try {
+      const { link, full_path } = await getPresignedUrl(file.type, 'avatars', 'public-read');
+      await uploadFile(link, file);
+      setAvatarUrl(full_path);
+      await saveProfileData({ avatar: full_path });
+    } catch (err) {
+      console.warn('Erro no upload S3, usando DataURL:', err);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          const dataUrl = ev.target.result as string;
+          setAvatarUrl(dataUrl);
+          saveProfileData({ avatar: dataUrl });
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const addDiscipline = (d: string) => {
+    if (!selectedDisciplines.includes(d)) {
+      setSelectedDisciplines([...selectedDisciplines, d]);
+    }
+    setShowDisciplines(false);
+  };
+
+  const removeDiscipline = (d: string) => {
+    setSelectedDisciplines(selectedDisciplines.filter((x) => x !== d));
   };
 
   return (
@@ -60,7 +135,7 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Foto de perfil */}
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -68,15 +143,18 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
           </label>
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary/20">
-                {avatarUrl ? (
+              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary/20 ring-1 ring-border/50">
+                {uploadingAvatar ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                ) : avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-lg font-bold text-primary">J</span>
+                  <span className="text-lg font-bold text-primary">{user?.initial || 'U'}</span>
                 )}
               </div>
               <button
                 onClick={() => fileRef.current?.click()}
+                disabled={uploadingAvatar}
                 className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-110"
               >
                 <Camera className="h-3 w-3" />
@@ -85,9 +163,10 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
             </div>
             <button
               onClick={() => fileRef.current?.click()}
+              disabled={uploadingAvatar}
               className="rounded-xl px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
             >
-              Alterar foto
+              {uploadingAvatar ? 'Enviando foto...' : 'Alterar foto'}
             </button>
           </div>
         </div>
@@ -103,8 +182,11 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onBlur={() => setEditingName(false)}
-                onKeyDown={(e) => handleKey(e, () => setEditingName(false))}
+                onBlur={() => {
+                  setEditingName(false);
+                  saveProfileData({ name });
+                }}
+                onKeyDown={(e) => handleKey(e, () => setEditingName(false), 'name')}
                 autoFocus
                 className="apple-input flex-1 text-sm"
               />
@@ -112,7 +194,10 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
               <div className="apple-input flex flex-1 items-center text-sm">{name}</div>
             )}
             <button
-              onClick={() => setEditingName(!editingName)}
+              onClick={() => {
+                if (editingName) saveProfileData({ name });
+                setEditingName(!editingName);
+              }}
               className="rounded-xl p-2.5 transition-colors hover:bg-accent"
               aria-label={editingName ? 'Salvar nome' : 'Editar nome'}
             >
@@ -132,8 +217,11 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setEditingEmail(false)}
-                onKeyDown={(e) => handleKey(e, () => setEditingEmail(false))}
+                onBlur={() => {
+                  setEditingEmail(false);
+                  saveProfileData({ email });
+                }}
+                onKeyDown={(e) => handleKey(e, () => setEditingEmail(false), 'email')}
                 autoFocus
                 className="apple-input flex-1 text-sm"
               />
@@ -141,7 +229,10 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
               <div className="apple-input flex flex-1 items-center text-sm">{email}</div>
             )}
             <button
-              onClick={() => setEditingEmail(!editingEmail)}
+              onClick={() => {
+                if (editingEmail) saveProfileData({ email });
+                setEditingEmail(!editingEmail);
+              }}
               className="rounded-xl p-2.5 transition-colors hover:bg-accent"
               aria-label={editingEmail ? 'Salvar e-mail' : 'Editar e-mail'}
             >
@@ -160,7 +251,10 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                onBlur={() => setEditingBio(false)}
+                onBlur={() => {
+                  setEditingBio(false);
+                  saveProfileData({ bio });
+                }}
                 autoFocus
                 className="apple-input min-h-[60px] w-full flex-1 resize-none text-sm"
               />
@@ -168,7 +262,10 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
               <div className="apple-input flex flex-1 items-center text-sm text-foreground">{bio}</div>
             )}
             <button
-              onClick={() => setEditingBio(!editingBio)}
+              onClick={() => {
+                if (editingBio) saveProfileData({ bio });
+                setEditingBio(!editingBio);
+              }}
               className="mt-1 rounded-xl p-2.5 transition-colors hover:bg-accent"
               aria-label={editingBio ? 'Salvar biografia' : 'Editar biografia'}
             >
@@ -177,60 +274,68 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
           </div>
         </div>
 
-        {/* Disciplinas */}
-        <div>
-          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <BookOpen className="h-3 w-3" /> Disciplinas que leciono
-          </label>
-
-          {/* Tags selecionadas */}
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {selectedDisciplines.map((d) => (
-              <span
-                key={d}
-                className="flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-              >
-                {d}
-                <button onClick={() => setSelectedDisciplines((prev) => prev.filter((x) => x !== d))} className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-primary/20">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <button
-              onClick={() => setShowDisciplines(!showDisciplines)}
-              className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
-            >
-              + Adicionar
-            </button>
-          </div>
-
-          {/* Seletor de disciplinas */}
-          {showDisciplines && (
-            <div className="flex flex-wrap gap-1.5 rounded-xl border border-border/30 bg-accent/30 p-3">
-              {['Matemática', 'Português', 'História', 'Geografia', 'Ciências', 'Física', 'Química', 'Biologia', 'Inglês', 'Educação Física', 'Artes', 'Robótica', 'Programação', 'Informática', 'Filosofia', 'Sociologia'].map((d) => {
-                const isSelected = selectedDisciplines.includes(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() =>
-                      setSelectedDisciplines((prev) =>
-                        isSelected ? prev.filter((x) => x !== d) : [...prev, d]
-                      )
-                    }
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                      isSelected
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'bg-card border border-border/50 text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    {d}
+        {/* Disciplinas (apenas professores) */}
+        {user?.role !== 'student' && (
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <BookOpen className="h-3 w-3" /> Disciplinas que Leciona
+            </label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {selectedDisciplines.map((d) => (
+                <span
+                  key={d}
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                >
+                  {d}
+                  <button onClick={() => removeDiscipline(d)} className="hover:text-destructive">
+                    <X className="h-3 w-3" />
                   </button>
-                );
-              })}
+                </span>
+              ))}
             </div>
-          )}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowDisciplines(!showDisciplines)}
+                className="rounded-xl border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
+                + Adicionar disciplina
+              </button>
+              {showDisciplines && (
+                <div className="absolute left-0 top-full mt-1 z-30 w-48 rounded-xl border border-border bg-popover p-1 shadow-lg">
+                  {AVAILABLE_DISCIPLINES.filter((d) => !selectedDisciplines.includes(d)).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => addDiscipline(d)}
+                      className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs hover:bg-accent transition-colors"
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Botão de Redefinir Senha */}
+        <div className="pt-2 border-t border-border/40">
+          <button
+            type="button"
+            onClick={() => setShowPasswordDialog(true)}
+            className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-foreground border border-border/60 hover:bg-accent transition-colors"
+          >
+            <KeyRound className="h-3.5 w-3.5 text-primary" />
+            Alterar Senha
+          </button>
         </div>
       </div>
+
+      <RedefinePasswordDialog
+        open={showPasswordDialog}
+        userName={user?.name}
+        onSuccess={() => setShowPasswordDialog(false)}
+      />
     </motion.div>
   );
 };
