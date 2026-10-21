@@ -1,0 +1,335 @@
+/* ===============================
+   Funcionalidades Específicas e Elementos Auxiliares
+   =============================== */
+
+/* --- Balões de Fala (Speech Bubbles) --- */
+.stage-speech-bubble {
+  position: absolute;
+  font-family: var(--font-outfit), sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #575E75; /* Cinza-azulado Scratch */
+  text-align: center;
+  z-index: 1000;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Wrapper do Balão para controlar o tamanho e a posição */
+.balao-wrapper {
+  position: relative;
+  pointer-events: none;
+}
+
+/* O texto posicionado por cima do SVG */
+.balao-texto {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px; /* Ajustado para o contexto do palco 480x360 */
+  color: #575E75;
+  font-weight: 600;
+  text-align: center;
+  word-wrap: break-word;
+  overflow: hidden;
+}
+
+/* --- Menus de Contexto e Dropdowns --- */
+html body .blocklyDropDownDiv {
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Menus do Google/Blockly (Dropdowns de Campos) - Estilo Scratch Blue */
+html body .goog-menu,
+html body .blocklyMenu {
+  background: #4C97FF;
+  /* Azul Scratch */
+  padding: 4px 0;
+  border: none;
+}
+
+/* Itens de Menu (Dropdowns de Campos) */
+html body .goog-menuitem,
+html body .blocklyMenuItem {
+  padding: 8px 16px;
+  color: white;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Texto centralizado */
+  cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+
+html body .goog-menuitem-content,
+html body .blocklyMenuItemContent {
+  color: white;
+  text-align: center;
+  flex: 1;
+}
+
+html body .goog-menuitem:hover,
+html body .blocklyMenuItem:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Menu de Contexto (Botão Direito) - Estilo Premium White */
+html body .blocklyContextMenu {
+  background-color: #ffffff;
+  font-family: var(--font-outfit), sans-serif;
+  font-size: 14px; /* Ajustado de 18px para ser mais proporcional */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 4px 0;
+  border-radius: 8px;
+  z-index: 20000;
+}
+
+/* Garante que os itens do menu de contexto tenham texto escuro (Premium White) */
+html body .blocklyContextMenu .goog-menuitem,
+html body .blocklyContextMenu .blocklyMenuItem {
+  color: #575E75 !important;
+  padding: 8px 24px;
+  justify-content: flex-start; /* Alinhamento à esquerda padrão de menus de contexto */
+}
+
+html body .blocklyContextMenu .goog-menuitem-content,
+html body .blocklyContextMenu .blocklyMenuItemContent {
+  color: #575E75 !important;
+  text-align: left;
+}
+
+html body .blocklyContextMenu .goog-menuitem:hover,
+html body .blocklyContextMenu .blocklyMenuItem:hover {
+  background-color: rgba(76, 151, 255, 0.1); /* Azul claro suave no hover */
+}
+
+/* Barra de Rolagem Customizada nos Dropdowns (Fina e Branca) */
+html body .goog-menu::-webkit-scrollbar,
+html body .blocklyMenu::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+  display: block;
+}
+
+html body .goog-menu::-webkit-scrollbar-thumb,
+html body .blocklyMenu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 10px;
+}
+
+/* Estilo do Checkmark (Visto) nos Menus */
+html body .goog-menuitem-checkbox,
+html body .blocklyMenuItemCheckbox {
+  position: absolute;
+  left: 8px;
+  filter: brightness(0) invert(1);
+  /* Torna o checkmark branco */
+}
+
+/* --- IA / ML Loader Overlay --- */
+.ml-loader-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.95) 0%, rgba(230, 240, 255, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+
+.ml-loader-content {
+  text-align: center;
+  background: white;
+  padding: 2rem;
+  border-radius: 4rem;
+  box-shadow: 0 40px 80px rgba(76, 151, 255, 0.2);
+}
+
+/**
+ * Estilos complexos para funcionalidades específicas (ex: Palco, Sidebar).
+ */
+.stage-container {
+  width: 450px;
+  height: 450px;
+  margin: 0 auto;
+}
+
+.ml-loader-progress {
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, #4C97FF, #8b5cf6);
+  border-radius: 3px;
+  animation: loadingProgress 2s infinite ease-in-out;
+}
+
+@keyframes loadingProgress {
+  0% {
+    left: -30%;
+  }
+
+  100% {
+    left: 100%;
+  }
+}
+
+/* --- Vision Lab Tools Modal --- */
+ .vision-lab-modal .modal-content {
+  border-radius: 24px;
+  background-color: #f8fafc;
+}
+
+ .tool-card {
+  border-radius: 24px;
+  border: none;
+  border-bottom: 6px solid rgba(0, 0, 0, 0.2);
+  padding: 0;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 1 / 1;
+  color: white;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+}
+
+.tool-card:hover {
+  transform: translateY(-8px);
+  /* Sombra global leve de base */
+  box-shadow: 0 14px 25px rgba(0, 0, 0, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tool-card:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.tool-card-banner {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3.5rem;
+  background: transparent;
+}
+
+/* Cores Lúdicas Estilo Jogos Educacionais com Sombras Brilhantes no Hover */
+.card-serial { background-color: #4CBF88; transition: background-color 0.3s; } /* Verde Água */
+.card-serial:hover { box-shadow: 0 20px 40px rgba(76, 191, 136, 0.55); }
+
+.card-humidity { background-color: #5CB1D6; transition: background-color 0.3s; } /* Azul Divertido */
+.card-humidity:hover { box-shadow: 0 20px 40px rgba(92, 177, 214, 0.55); }
+
+.card-light { background-color: #CA8A04; color: #fff; transition: background-color 0.4s ease; } /* Ocre Escuro */
+.card-light:hover { 
+  background-color: #FFBF00; /* Amarelo Vibrante */
+  box-shadow: 0 20px 40px rgba(255, 191, 0, 0.65); 
+}
+
+.card-percent { background-color: #9966FF; transition: background-color 0.3s; } /* Roxo Mágico */
+.card-percent:hover { box-shadow: 0 20px 40px rgba(153, 102, 255, 0.55); }
+
+/* Micro-animações para os Ícones no Hover */
+.tool-card:hover .bi {
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 1. O Sol "Abre" (Luz) - Começa pequeno e sem raios, cresce e revela raios */
+.card-light .bi-brightness-high {
+  transform: scale(0.6);
+  clip-path: circle(28% at 50% 50%); /* Corta tudo fora do miolo do sol */
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.card-light:hover .bi-brightness-high {
+  transform: scale(1.1) rotate(90deg);
+  clip-path: circle(100% at 50% 50%); /* Revela os raios solares */
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.8));
+}
+
+/* 2. A Gota Crescendo (Umidade) */
+.card-humidity .bi-droplet-fill {
+  transition: all 0.5s ease-in-out;
+}
+
+.card-humidity:hover .bi-droplet-fill {
+  animation: singleSwellWater 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.6));
+}
+
+@keyframes singleSwellWater {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.15) translateY(-3px); }
+}
+
+/* 3. Terminal Flutuante / Holográfico (Serial) */
+.card-serial:hover .bi-terminal {
+  animation: floatHologram 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+}
+@keyframes floatHologram {
+  0%, 100% { transform: translateY(0) scale(1.1); }
+  50% { transform: translateY(-8px) scale(1.15); }
+}
+
+/* 4. O Olho observa e pisca (Câmera IA) */
+.card-percent:hover .bi-eye-fill {
+  animation: lookAndBlink 2.5s infinite;
+}
+@keyframes lookAndBlink {
+  0%, 10%, 100% { transform: scale(1.2) translateX(0) scaleY(1); }
+  20%, 25% { transform: scale(1.2) translateX(-6px) scaleY(1); }
+  30% { transform: scale(1.2) translateX(-6px) scaleY(0.1); } /* Pisca */
+  35% { transform: scale(1.2) translateX(-6px) scaleY(1); }
+  50%, 55% { transform: scale(1.2) translateX(6px) scaleY(1); }
+  60% { transform: scale(1.2) translateX(6px) scaleY(0.1); } /* Pisca */
+  65% { transform: scale(1.2) translateX(6px) scaleY(1); }
+}
+
+.tool-card-content {
+  flex-shrink: 0;
+  padding: 10px 4px; /* Permite fluidez em Y ao invés de forçar Altura estática */
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+  background: rgba(0, 0, 0, 0.15); /* Faixa inferior translúcida escura */
+  border-top: none;
+}
+
+/* Responsividade para Telas Menores */
+@media (max-width: 768px) {
+  .tool-card-banner {
+    font-size: 2.2rem;
+  }
+  .tool-card-content {
+    font-size: 13px;
+    padding: 8px 4px;
+  }
+  .tool-card {
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 576px) {
+  .tool-card-banner {
+    font-size: 1.8rem;
+  }
+  .tool-card-content {
+    font-size: 11px;
+    padding: 6px 2px;
+  }
+}

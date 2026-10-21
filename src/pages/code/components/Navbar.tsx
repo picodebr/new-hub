@@ -4,6 +4,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import * as Blockly from 'blockly/core';
+import { javascriptGenerator } from 'blockly/javascript';
+import { arduinoGenerator } from '@/_base/generators/board';
+import { IBlocklyWorkspaceJson } from '@/_base/domain/entities';
 import RocketLoader from './shared/RocketLoader';
 import SerialMonitor from './serial/SerialMonitor';
 import ToolsModal from './shared/ToolsModal';
@@ -13,7 +17,7 @@ import { useProject } from '@/_base/context/ProjectContext';
 import { useFirmware } from '@/_base/context/FirmwareContext';
 import { IProjectContextUI, SerializationService } from '@/_base/services/code';
 import { useCustomRouter, useCustomToast } from '@/_base/hooks';
-import { LogOut } from 'lucide-react';
+import { FiLogOut } from 'react-icons/fi';
 import { ICodeProject } from '@/_base/interfaces/codeProject/IProject';
 
 interface IProps {
@@ -47,8 +51,7 @@ export default function CodeNavbar({ project }: IProps) {
   const [isReactNative, setIsReactNative] = useState(false);
 
   // Helpers de Estado Visual
-  const isConnecting = false; // Simplified, or can be tracked inside FirmwareContext if needed
-  // Define se o botão deve estar "ativo" (Verde)
+  const isConnecting = false;
   const isActive = isSerialConnected || isConnecting || isBusy || isUploading || isUploadingLocal;
 
   // Referência para o input de arquivo oculto
@@ -62,9 +65,9 @@ export default function CodeNavbar({ project }: IProps) {
 
   // Adapter to decouple SerializationService from React Contexts
   const contextAdapter: IProjectContextUI = {
-    projectId: project?.id, // Could be added to a State if needed
+    projectId: project?.id,
     projectName: project?.name,
-    isUploadMode: !!uiContext.uploadModeBlocks,
+    isUploadMode: uiContext.isUploadMode,
     uploadModeBlocks: uiContext.uploadModeBlocks,
     uploadCode: uiContext.uploadCode,
     setIsUploadMode: setIsUploadMode,
@@ -82,15 +85,48 @@ export default function CodeNavbar({ project }: IProps) {
   };
 
   useEffect(() => {
-    if (!project?.metadata) {
+    if (!project) return;
+
+    const rawMeta = (project?.metadata as any)?.sprites
+      ? project.metadata
+      : (project?.metadata as any)?.metadata?.sprites
+      ? (project.metadata as any).metadata
+      : project?.metadata;
+
+    if (!rawMeta || (!rawMeta.sprites && !rawMeta.uploadMode)) {
       SerializationService.resetProject(contextAdapter);
       return;
     }
-    SerializationService.loadProject(project.metadata, contextAdapter);
+
+    SerializationService.loadProject(rawMeta, contextAdapter);
   }, [project]);
 
   /**
-   * Lida com a exportação do projeto atual para um arquivo JSON.
+   * Alterna entre modo Palco e modo Upload salvando o estado do workspace atual
+   */
+  const handleModeSwitch = (targetUploadMode: boolean) => {
+    if (targetUploadMode === isUploadMode) return;
+    const ws = runnerContext.blocklyWorkspaceRef?.current?.getWorkspace?.();
+    if (ws) {
+      const json = Blockly.serialization.workspaces.save(ws) as unknown as IBlocklyWorkspaceJson;
+      const blocksJson: IBlocklyWorkspaceJson = {
+        blocks: json.blocks || { languageVersion: 0, blocks: [] },
+        variables: json.variables,
+      };
+      if (isUploadMode) {
+        const code = arduinoGenerator.workspaceToCode(ws);
+        uiContext.setUploadModeBlocks(blocksJson);
+        uiContext.setUploadCode(code);
+      } else {
+        const code = javascriptGenerator.workspaceToCode(ws);
+        projectContext.updateSpriteBlocks(projectContext.activeSpriteId, blocksJson, code);
+      }
+    }
+    setIsUploadMode(targetUploadMode);
+  };
+
+  /**
+   * Lida com a exportação do projeto atual para a API.
    */
   const handleSaveProject = async () => {
     if (!project || isSaving) return;
@@ -113,18 +149,10 @@ export default function CodeNavbar({ project }: IProps) {
   };
 
   /**
-   * Abre o seletor de arquivos do sistema.
-   */
-  const handleOpenProjectClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  /**
    * Processa o arquivo selecionado pelo usuário e carrega os blocos no workspace.
    */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     SerializationService.handleFileSelect(e, contextAdapter);
-    // Reseta o valor para permitir selecionar o mesmo arquivo novamente
     if (e.target) e.target.value = '';
   };
 
@@ -137,7 +165,6 @@ export default function CodeNavbar({ project }: IProps) {
       return;
     }
 
-    // Delega a lógica complexa de upload para o FirmwareContext
     await uploadSketch();
   };
 
@@ -146,8 +173,6 @@ export default function CodeNavbar({ project }: IProps) {
    */
   const handleConnectClick = async () => {
     if (isReactNative) {
-      // Em React Native, o adaptador já envia postMessage
-      // Apenas precisamos chamar connectSerial normalmente
       try {
         await connectSerial();
       } catch (err) {
@@ -159,7 +184,6 @@ export default function CodeNavbar({ project }: IProps) {
         });
       }
     } else {
-      // Em web, comportamento normal
       try {
         await connectSerial();
       } catch (err) {
@@ -180,189 +204,225 @@ export default function CodeNavbar({ project }: IProps) {
         style={{
           backgroundColor: '#fff',
           borderBottom: '1px solid #e8e8e8',
-          maxHeight: '54px',
-          minHeight: '54px',
+          height: '60px',
+          maxHeight: '60px',
+          minHeight: '60px',
           position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
-        <div className="container-fluid p-0 d-flex align-items-center justify-content-between">
-          {/* Logotipo */}
-          <a className="navbar-brand d-flex align-items-center" href="#" suppressHydrationWarning={true}>
-            <span className="font-bold text-lg text-primary tracking-tight">PiCode</span>
-          </a>
+        <div className="container-fluid p-0 d-flex align-items-center justify-content-between h-100 position-relative">
+          {/* Esquerda: Logo PiCode Education + Conectar + Salvar */}
+          <div className="d-flex align-items-center gap-3">
+            <a className="navbar-brand d-flex align-items-center m-0 p-0" href="#" onClick={(e) => e.preventDefault()}>
+              <img
+                src="/logo/picode-logo-full-bluedark.svg"
+                alt="PiCode Education"
+                style={{ height: '36px', width: 'auto', display: 'block' }}
+              />
+            </a>
 
-          {/* Conteúdo Central e Botões de Ação */}
-          <div className="d-flex align-items-center flex-grow-1 justify-content-between ms-3">
-            <div className="d-flex align-items-center gap-2">
-              {/* Botão de Conectar/Desconectar USB */}
+            {/* Botão de Conectar/Desconectar USB */}
+            <button
+              className="btn btn-sm d-flex align-items-center gap-2"
+              onClick={isSerialConnected ? disconnectSerial : handleConnectClick}
+              disabled={false}
+              title={isSerialConnected ? 'Clique para desconectar' : isReactNative ? 'Conectar via React Native' : 'Clique para conectar'}
+              style={{
+                backgroundColor: isActive ? '#22c55e' : '#f1f5f9',
+                color: isActive ? '#fff' : '#64748b',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              <i className={`bi ${isActive ? 'bi-usb-plug-fill' : 'bi-usb-plug'}`} style={{ fontSize: '14px' }}></i>
+              {isSerialConnected || isUploading || isUploadingLocal || isBusy ? 'Conectado' : 'Conectar'}
+            </button>
+
+            {/* Botão Salvar */}
+            <button
+              className="btn btn-sm d-flex align-items-center gap-1"
+              onClick={handleSaveProject}
+              disabled={isSaving}
+              style={{
+                backgroundColor: '#4483ff',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 14px',
+                opacity: isSaving ? 0.7 : 1,
+                cursor: isSaving ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              {isSaving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-1"></span>
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-save me-1" style={{ fontSize: '14px' }}></i> Salvar
+                </>
+              )}
+            </button>
+
+            {/* Input de Arquivos Escondido */}
+            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".piboard,.json" onChange={handleFileChange} />
+          </div>
+
+          {/* Centro Absoluto: Nome do Projeto */}
+          <div
+            className="d-flex align-items-center justify-content-center"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              className="px-4 py-1 text-center"
+              style={{
+                backgroundColor: '#f1f5f9',
+                color: '#131432',
+                border: '1px solid #e2e8f0',
+                borderRadius: '20px',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                maxWidth: '280px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {project ? project.name : 'Carregando...'}
+            </div>
+          </div>
+
+          {/* Direita: Monitores, Carregar, Alternador Palco/Upload, Sair */}
+          <div className="d-flex align-items-center gap-3">
+            {/* Botão Monitores (Apenas no modo Upload) */}
+            {isUploadMode && (
               <button
-                className="btn btn-sm  d-flex align-items-center gap-2"
-                onClick={isSerialConnected ? disconnectSerial : handleConnectClick}
-                disabled={false}
-                title={isSerialConnected ? 'Clique para desconectar' : isReactNative ? 'Conectar via React Native' : 'Clique para conectar'}
+                className="btn btn-sm d-flex align-items-center gap-2"
+                onClick={() => setShowTools(true)}
+                title="Ferramentas e Monitores"
                 style={{
-                  backgroundColor: isActive ? '#22c55e' : '#f1f5f9',
-                  color: isActive ? '#fff' : '#64748b',
+                  backgroundColor: '#f1f5f9',
+                  color: '#64748b',
                   border: '1px solid #e2e8f0',
                   borderRadius: '8px',
                   padding: '6px 12px',
-                  opacity: 1,
-                  cursor: 'pointer',
+                  fontWeight: 500,
                 }}
               >
-                <i className={`bi ${isActive ? 'bi-usb-plug-fill' : 'bi-usb-plug'}`} style={{ fontSize: '14px' }}></i>
-                {isSerialConnected || isUploading || isUploadingLocal || isBusy ? 'Conectado' : 'Conectar'}
+                <i className="bi bi-speedometer2" style={{ fontSize: '14px' }}></i> Monitores
               </button>
+            )}
 
-              {/* Botão Salvar */}
+            {/* Botão Carregar (Apenas no modo Upload) */}
+            {isUploadMode && (
               <button
-                className="btn btn-sm "
-                onClick={handleSaveProject}
-                disabled={isSaving}
+                className="btn btn-sm fw-semibold d-flex align-items-center gap-1"
+                onClick={() => {
+                  setIsUploadingLocal(true);
+                  handleUpload().finally(() => setIsUploadingLocal(false));
+                }}
+                disabled={isUploadingLocal || isUploading || !isSerialConnected}
+                title={!isSerialConnected ? 'Conecte a placa primeiro' : ''}
                 style={{
-                  backgroundColor: '#4483ff',
+                  backgroundColor: !isSerialConnected ? '#94a3b8' : '#0047b3',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '8px',
-                  padding: '6px 12px',
-                  opacity: isSaving ? 0.7 : 1,
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  padding: '6px 14px',
+                  cursor: !isSerialConnected ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isSaving ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2"></span>
-                    Salvando...
-                  </>
+                {isUploadingLocal ? (
+                  <span>
+                    <span className="spinner-border spinner-border-sm me-2"></span>Enviando...
+                  </span>
                 ) : (
-                  <>
-                    <i className="bi bi-save me-1" style={{ fontSize: '14px' }}></i> Salvar
-                  </>
+                  <span>
+                    <i className="bi bi-lightning-fill me-1" style={{ fontSize: '14px' }}></i> Carregar
+                  </span>
                 )}
               </button>
+            )}
 
-              {/* Input de Arquivos Escondido */}
-              <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".piboard,.json" onChange={handleFileChange} />
-            </div>
-
+            {/* Alternador de Modo (Palco vs Upload) */}
             <div
-              className="hidden md:flex items-center justify-center absolute left-1/2 -translate-x-1/2 pointer-events-none"
+              className="d-flex align-items-center"
+              style={{
+                backgroundColor: '#f1f5f9',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '4px',
+              }}
             >
-              {/* Nome do Projeto Centralizado */}
-              <div
-                className="bg-primary/10 text-primary px-5 py-1 rounded-full border border-primary/20 text-sm font-semibold tracking-tight text-center"
-              >
-                {project ? project.name : 'Carregando...'}
-              </div>
-            </div>
-
-
-            {/* Lado Direito: Alternador de Modo e Ações Específicas */}
-            <div className="d-flex align-items-center gap-3">
-              {/* Botão de Monitores (Apenas no modo Upload) */}
-              {isUploadMode && (
-                <button
-                  className="btn btn-sm d-flex align-items-center gap-2"
-                  onClick={() => setShowTools(true)}
-                  title="Ferramentas e Monitores"
-                  style={{
-                    backgroundColor: '#f1f5f9',
-                    color: '#64748b',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '6px 12px',
-                  }}
-                >
-                  <i className="bi bi-speedometer2" style={{ fontSize: '14px' }}></i> Monitores
-                </button>
-              )}
-
-              {/* Botão de CARREGAR (Apenas no modo Upload) */}
-              {isUploadMode && (
-                <button
-                  className="btn btn-sm fw-semibold"
-                  onClick={() => {
-                    setIsUploadingLocal(true);
-                    handleUpload().finally(() => setIsUploadingLocal(false));
-                  }}
-                  disabled={isUploadingLocal || isUploading || !isSerialConnected}
-                  title={!isSerialConnected ? 'Conecte a placa primeiro' : ''}
-                  style={{
-                    backgroundColor: !isSerialConnected ? '#94a3b8' : '#0047b3',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '6px 14px',
-                    cursor: !isSerialConnected ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {isUploadingLocal ? (
-                    <span>
-                      <span className="spinner-border spinner-border-sm me-2"></span>Enviando...
-                    </span>
-                  ) : (
-                    <span>
-                      <i className="bi bi-lightning-fill me-1" style={{ fontSize: '14px' }}></i> Carregar
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {/* Alternador de Modo (Palco vs Upload) */}
-              <div
-                className="d-flex align-items-center p-1"
-                style={{
-                  backgroundColor: '#f1f5f9',
-                  borderRadius: '10px',
-                  border: '1px solid #e2e8f0',
-                }}
-              >
-                <button
-                  className="btn btn-sm px-3 fw-semibold d-flex align-items-center gap-2"
-                  onClick={() => setIsUploadMode(false)}
-                  style={{
-                    backgroundColor: !isUploadMode ? '#131432' : 'transparent',
-                    color: !isUploadMode ? '#fff' : '#64748b',
-                    border: 'none',
-                    borderRadius: '8px',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <i className="bi bi-play-circle-fill" style={{ fontSize: '14px' }}></i> Palco
-                </button>
-                <button
-                  className="btn btn-sm px-3 fw-semibold d-flex align-items-center gap-2"
-                  onClick={() => setIsUploadMode(true)}
-                  style={{
-                    backgroundColor: isUploadMode ? '#131432' : 'transparent',
-                    color: isUploadMode ? '#fff' : '#64748b',
-                    border: 'none',
-                    borderRadius: '8px',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <i className="bi bi-cpu-fill" style={{ fontSize: '14px' }}></i> Upload
-                </button>
-              </div>
-
               <button
-                type="button"
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-rose-500 hover:bg-rose-500/10 transition-colors"
-                onClick={() => {
-                  router.back();
+                className="btn btn-sm px-3 fw-semibold d-flex align-items-center gap-2"
+                onClick={() => handleModeSwitch(false)}
+                style={{
+                  backgroundColor: !isUploadMode ? '#131432' : 'transparent',
+                  color: !isUploadMode ? '#fff' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  transition: 'all 0.2s',
+                  padding: '4px 12px',
                 }}
-                title="Sair do editor"
               >
-                <LogOut className="w-4.5 h-4.5" />
+                <i className="bi bi-play-circle-fill" style={{ fontSize: '14px' }}></i> Palco
+              </button>
+              <button
+                className="btn btn-sm px-3 fw-semibold d-flex align-items-center gap-2"
+                onClick={() => handleModeSwitch(true)}
+                style={{
+                  backgroundColor: isUploadMode ? '#131432' : 'transparent',
+                  color: isUploadMode ? '#fff' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  transition: 'all 0.2s',
+                  padding: '4px 12px',
+                }}
+              >
+                <i className="bi bi-cpu-fill" style={{ fontSize: '14px' }}></i> Upload
               </button>
             </div>
+
+            {/* Botão Sair */}
+            <button
+              type="button"
+              className="btn btn-link p-0 d-flex align-items-center justify-content-center"
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
+                color: '#D92D20',
+                textDecoration: 'none',
+                backgroundColor: 'transparent',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fee4e2')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              onClick={() => {
+                router.back();
+              }}
+              title="Sair do editor"
+            >
+              <FiLogOut style={{ fontSize: '18px', color: '#D92D20' }} />
+            </button>
           </div>
         </div>
       </nav>
 
       {/* Modais e Overlays de Carregamento */}
-
-      {/* Animação do Foguete (Carregamento de código) */}
       <RocketLoader isVisible={showRocket} phase={rocketPhase} errorMessage={rocketErrorMessage} />
 
       {/* Modal de Ferramentas de Sensores */}

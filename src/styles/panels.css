@@ -1,0 +1,658 @@
+/* ==========================================================================
+   Painéis Específicos da Aplicação (Palco, Sprites, Código)
+   ========================================================================== */
+
+/* 0. Neutralização de globals.css para a nova página do editor
+   (globals.css tem regras !important incompatíveis com o layout WebGL)
+   ========================================================================== */
+
+.main-ide-content .stage-area-container {
+  aspect-ratio: unset !important;
+  max-height: none !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 6px 0 6px !important;
+}
+
+.main-ide-content .stage-section {
+  min-height: 0 !important;
+}
+
+.main-ide-content .management-section {
+  min-height: 150px !important;
+}
+
+.main-ide-content .stage-header {
+  border-bottom: none !important;
+}
+
+.main-ide-content .stage-section.fullscreen .stage-area-container {
+  flex: 1 1 auto !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 24px !important;
+}
+
+/* 1. Layout & Estrutura Base
+   ========================================================================== */
+
+html body * {
+  box-sizing: border-box;
+}
+
+html body #right-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--scratch-lightblue);
+  overflow: hidden;
+  flex: 0 0 540px;
+  width: 540px;
+  max-width: 540px;
+}
+
+html body #blockly-container {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html body .stage-column {
+  flex-shrink: 0;
+  flex: 0 0 90px;
+  width: 90px;
+}
+
+/* ==========================================================================
+   Stage Selector Panel (coluna direita — estilo Scratch)
+   ========================================================================== */
+
+.stage-selector-panel {
+  flex-shrink: 0;
+  flex: 0 0 90px;
+  width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  background-color: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: visible;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.stage-selector-panel:hover {
+  border-color: #4c97ff;
+}
+
+.stage-selector-panel--selected {
+  border-color: #4c97ff;
+  box-shadow: 0 0 0 4px rgba(76, 151, 255, 0.35);
+}
+
+.stage-selector-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 22px;
+  background-color: #fff;
+  border-radius: 16px 16px 0 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.stage-selector-panel--selected .stage-selector-panel__header {
+  background-color: #4c97ff;
+}
+
+.stage-selector-panel__header-title {
+  font-size: 0.625rem;
+  font-weight: bold;
+  color: #575e75;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.stage-selector-panel--selected .stage-selector-panel__header-title {
+  color: #fff;
+}
+
+.stage-selector-panel__thumbnail {
+  display: block;
+  margin-top: 4px;
+  width: calc(100% - 12px);
+  height: 48px;
+  max-width: 64px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  flex-shrink: 0;
+  background-color: #fff;
+}
+
+.stage-selector-panel__label {
+  margin: 6px 0 2px;
+  font-size: 0.6rem;
+  color: #575e75;
+  user-select: none;
+  text-align: center;
+}
+
+.stage-selector-panel__count {
+  padding: 2px 10px 4px;
+  font-size: 0.625rem;
+  color: #575e75;
+  user-select: none;
+}
+
+/* 2. Seção do Palco (Superior)
+   ========================================================================== */
+
+html body .stage-section {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--scratch-lightblue);
+  z-index: 10;
+}
+
+.stage-header {
+  flex: 0 0 auto;
+  padding: 0 15px;
+  background: #fff;
+  border-bottom: none;
+}
+
+/* Controles de execução (Bandeira Verde e Pare) */
+.stage-controls .btn-go.btn-link {
+  color: #00ff1e;
+  font-size: 1.8rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.stage-controls .btn-go.active {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(25, 135, 84, 0.4));
+  transform: scale(1.1);
+}
+
+.stage-controls .btn-go.inactive {
+  color: #a0aec0;
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
+  transform: scale(1);
+}
+
+.stage-controls .btn-stop {
+  color: #ba3d49;
+  opacity: 0.5;
+  font-size: 1.5rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.stage-controls .btn-stop.active {
+  opacity: 1;
+  color: #ff0000;
+  filter: drop-shadow(0 0 5px rgba(220, 53, 69, 0.4));
+  transform: scale(1.1);
+}
+
+/* Área Visual do Palco */
+.stage-area-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 6px 0 6px;
+  overflow: hidden;
+}
+
+.stage-content {
+  flex: 0 0 auto;
+  width: 480px;
+  height: 360px;
+  background-color: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #ccc;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  flex-shrink: 0;
+}
+
+/* Estado de Tela Cheia do Palco */
+html body .stage-section.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  background-color: #ffffff;
+}
+
+html body .stage-section.fullscreen .stage-header {
+  width: 100%;
+  height: 52px;
+  flex: 0 0 52px;
+  background-color: #ffffff;
+}
+
+html body .stage-section.fullscreen .stage-area-container {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+}
+
+html body .stage-section.fullscreen .stage-content {
+  border-radius: 0;
+  border: none;
+}
+
+/* 3. Seção de Gestão (Sprites e Cenários)
+   ========================================================================== */
+
+html body .management-section {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 200px;
+  max-width: 100%;
+  background-color: var(--scratch-lightblue);
+  overflow: hidden;
+}
+
+html body .sprite-management-area {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  background-color: var(--scratch-lightblue);
+  min-height: 0;
+  overflow: hidden;
+  gap: 8px;
+  padding: 0 8px 8px 8px;
+}
+
+.sprite-info-panel {
+  flex: 0 0 auto;
+  background-color: #e9eef2;
+  padding: 6px 12px;
+}
+
+.sprite-list-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+}
+
+.sprite-thumbnail-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+  padding-bottom: 20px;
+}
+
+/* 4. Itens da Lista (Cards de Sprites)
+   ========================================================================== */
+
+html body .sprite-card,
+html body .stage-card {
+  width: 70px;
+  height: 80px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px;
+  position: relative;
+}
+
+.sprite-card:hover,
+.stage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Estado Selecionado (Active) */
+html body .sprite-card.border-primary,
+html body .stage-card.border-primary {
+  border-color: #4C97FF;
+  border-width: 2px;
+  background-color: #e6f0ff;
+  box-shadow: 0 0 0 2px rgba(76, 151, 255, 0.2);
+}
+
+.sprite-name-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #575e75;
+  width: 100%;
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  margin-top: auto;
+  padding-bottom: 2px;
+}
+
+.sprite-card-img-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  overflow: hidden;
+}
+
+.sprite-card-img-area img {
+  max-height: 52px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.stage-card-image-container {
+  width: 100%;
+  height: 60px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
+/* 5. Painel de Propriedades
+   ========================================================================== */
+
+.properties-panel {
+  padding: 0.5rem 0.75rem;
+  transition: padding 0.2s ease;
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+}
+
+.properties-panel .form-control-sm {
+  font-size: 0.8rem;
+}
+
+/* 6. Botões e Menus de Adição
+   ========================================================================== */
+
+html body .btn-add-sprite-main,
+html body .btn-add-backdrop-main {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.2rem;
+  background-color: #4C97FF;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  z-index: 200;
+  color: white;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.scratch-add-button-main {
+  width: 46px;
+  height: 46px;
+  font-size: 1.4rem;
+}
+
+.scratch-add-button-menu {
+  width: 42px;
+}
+
+.scratch-add-button-item {
+  width: 42px;
+  height: 38px;
+  font-size: 1.1rem;
+}
+
+@media (max-height: 750px) {
+  .scratch-add-button-main {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .scratch-add-button-menu {
+    width: 32px;
+  }
+
+  .scratch-add-button-item {
+    width: 32px;
+    height: 30px;
+    font-size: 0.9rem;
+  }
+}
+
+/* Modo Upload - Ocupar tela cheia */
+html body.upload-mode #right-panel {
+  display: none !important;
+}
+
+html body.upload-mode #blockly-container {
+  flex: 1 1 100% !important;
+}
+
+/* ==========================================================================
+   Responsividade: LARGURA (Width)
+   ========================================================================== */
+
+@media (max-width: 1200px) {
+  html body:not(.upload-mode) #right-panel {
+    flex: 0 0 400px;
+    width: 400px;
+  }
+}
+
+@media (min-width: 1900px) {
+  html body:not(.upload-mode) #right-panel {
+    flex: 0 0 550px;
+    width: 550px;
+  }
+}
+
+/* ==========================================================================
+   Responsividade: ALTURA (Height) - Compactação Progressiva
+   ========================================================================== */
+
+/* --- Step 1: 850px --- */
+@media (max-height: 850px) {
+  html body .sprite-card {
+    width: 64px;
+    height: 76px;
+  }
+
+  html body .sprite-card-img-area,
+  html body .sprite-card-img-area img {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+  }
+}
+
+/* --- Step 2: 800px --- */
+@media (max-height: 800px) {
+  html body .stage-card-image-container {
+    height: 45px;
+  }
+
+  html body .sprite-management-area {
+    gap: 8px;
+    padding: 8px;
+  }
+}
+
+/* --- Step 3: 750px --- */
+@media (max-height: 750px) {
+  html body .sprite-card {
+    width: 58px;
+    height: 68px;
+  }
+
+  html body .sprite-name-label {
+    font-size: 9px;
+  }
+
+  html body .sprite-card-img-area,
+  html body .sprite-card-img-area img {
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+  }
+}
+
+/* --- Step 4: 700px --- */
+@media (max-height: 700px) {
+  html body .stage-card-image-container {
+    height: 35px;
+  }
+
+  html body .sprite-management-area {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  html body .properties-panel {
+    padding: 0.25rem 0.5rem;
+  }
+
+  .properties-panel .d-flex.align-items-center.gap-2.mb-2 {
+    margin-bottom: 0.25rem;
+    gap: 0.25rem;
+  }
+
+  .properties-panel .form-control-sm {
+    padding: 0.1rem 0.25rem;
+    height: 24px;
+    font-size: 0.75rem;
+  }
+}
+
+/* --- Step 5: 650px (Breakpoint Crítico) --- */
+@media (max-height: 650px) {
+
+  html body:not(.upload-mode) #right-panel {
+    flex: 0 0 330px;
+    width: 330px;
+  }
+
+  html body .sprite-card {
+    width: 50px;
+    height: 62px;
+  }
+
+  html body .stage-card-image-container {
+    height: 30px;
+  }
+
+  html body .stage-header {
+    padding: 2px 10px;
+  }
+
+  html body .sprite-card-img-area,
+  html body .sprite-card-img-area img {
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+  }
+}
+
+/* --- Step 6: 600px --- */
+@media (max-height: 600px) {
+  .properties-panel .btn-group-sm>.btn {
+    padding: 0.05rem 0.2rem;
+  }
+
+  .properties-panel span {
+    font-size: 0.65rem;
+  }
+
+  .properties-panel input.form-control-sm {
+    font-size: 0.7rem;
+    height: 22px;
+  }
+}
+
+/* --- Step 7: 550px --- */
+@media (max-height: 550px) {
+  html body .management-section {
+    min-height: 120px;
+  }
+
+  html body .sprite-card {
+    width: 42px;
+    height: 42px;
+  }
+
+  html body .sprite-card-img-area,
+  html body .sprite-card-img-area img {
+    height: 18px;
+    min-height: 18px;
+    max-height: 18px;
+  }
+
+  html body .properties-panel {
+    padding: 0.15rem 0.4rem;
+  }
+
+  .properties-panel .gap-2,
+  .properties-panel .gap-1 {
+    gap: 0.1rem;
+  }
+
+  .properties-panel input.form-control-sm {
+    height: 20px;
+    padding: 1px 4px;
+  }
+}
+
+/* --- Step 8: 500px --- */
+@media (max-height: 500px) {
+  html body .sprite-card {
+    width: 36px;
+    height: 36px;
+  }
+
+  html body .sprite-card-img-area,
+  html body .sprite-card-img-area img {
+    height: 12px;
+    min-height: 12px;
+    max-height: 12px;
+  }
+}

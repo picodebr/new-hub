@@ -1,18 +1,5 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Play,
-  Square,
-  Maximize2,
-  Minimize2,
-  Code,
-  Layers,
-  Sparkles,
-  ArrowLeft,
-  ChevronRight,
-  Cpu,
-} from 'lucide-react';
 import { CombinedProviders } from '@/_base/context/CombinedProviders';
 import { useUI } from '@/_base/context/UIContext';
 import { useFirmware } from '@/_base/context/FirmwareContext';
@@ -50,6 +37,7 @@ function CodeIdeContent() {
     activeExtensions,
     isStageFullScreen,
     setIsStageFullScreen,
+    setShowRestoreConfirmModal,
     setActiveTab,
   } = useUI();
 
@@ -66,7 +54,7 @@ function CodeIdeContent() {
     setBlocklyWorkspaceRef(blocklyRef);
   }, [setBlocklyWorkspaceRef]);
 
-  const { handleRun, handleStop } = useCodeExecution(blocklyRef);
+  const { handleRun, handleStop, handleBlockClick, handleRunCode } = useCodeExecution(blocklyRef);
 
   // Fetch project details
   useEffect(() => {
@@ -86,6 +74,10 @@ function CodeIdeContent() {
             id: projectId,
             name: 'Meu Projeto Robótica',
             folder_id: folderId || '1',
+            metadata: {
+              settings: { mode: 'stage' },
+              sprites: [],
+            },
             source_code: {
               code: '',
               mode: 'block',
@@ -124,147 +116,208 @@ function CodeIdeContent() {
   }, [handleStop, restoreBoard]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-background overflow-hidden select-none">
-      {/* Code Navbar */}
+    <div
+      className="main-ide-content"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        overflow: 'hidden',
+        zIndex: 100,
+        backgroundColor: '#fff',
+      }}
+    >
       <CodeNavbar project={project} />
 
-      {/* Main Workspace Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left / Center Area: Blockly Workspace or Full Monaco */}
-        <div className="flex-1 flex flex-col min-w-0 h-full relative">
-          <BlocklyWorkspace ref={blocklyRef} />
+      <div className="d-flex flex-column flex-grow-1 overflow-hidden" style={{ position: 'relative' }}>
+        <StageBridge />
 
-          {/* Floating Toggle for Code Preview in Upload Mode */}
-          {isUploadMode && (
-            <button
-              type="button"
-              onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
-              className="absolute right-4 top-3 z-40 p-2.5 rounded-xl bg-card border border-border shadow-md hover:bg-accent text-foreground transition-all flex items-center gap-1.5 text-xs font-semibold"
+        <div className="container-fluid flex-grow-1 d-flex flex-column px-0" style={{ overflow: 'hidden' }}>
+          <div className="d-flex h-100 flex-nowrap w-100">
+            {/* BLOCKLY CONTAINER */}
+            <div
+              className="p-0"
+              id="blockly-container"
+              style={{
+                minWidth: 0,
+                border: 'none',
+              }}
             >
-              <Code className="w-4 h-4 text-primary" />
-              <span>{isCodePanelOpen ? 'Ocultar C++' : 'Ver Código C++'}</span>
-            </button>
-          )}
+              <BlocklyWorkspace ref={blocklyRef} onBlockClick={handleBlockClick} onRunCode={handleRunCode} />
+            </div>
 
-          {/* Code Preview Drawer / Overlay */}
-          <AnimatePresence>
-            {isUploadMode && isCodePanelOpen && (
-              <motion.div
-                initial={{ opacity: 0, x: 300 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 300 }}
-                className="absolute top-0 right-0 bottom-0 w-[420px] max-w-full z-30 shadow-2xl border-l border-border bg-card flex flex-col"
-              >
-                <div className="p-3 border-b border-border flex items-center justify-between bg-muted/40">
-                  <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                    <Code className="w-4 h-4 text-primary" /> Código Arduino C++
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsCodePanelOpen(false)}
-                    className="p-1 rounded-lg hover:bg-accent text-muted-foreground transition-colors text-xs"
-                  >
-                    Fechar
-                  </button>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <CodePreview />
-                </div>
-              </motion.div>
+            {!isUploadMode && (
+              <MLRecognitionWindow
+                isOpen={isRecognitionWindowOpen}
+                onClose={() => setIsRecognitionWindowOpen(false)}
+              />
             )}
-          </AnimatePresence>
-        </div>
 
-        {/* Right Stage & Management Column (Visible when not in Upload Mode) */}
-        {!isUploadMode && (
-          <div
-            className={`w-[440px] max-w-full flex flex-col border-l border-border/60 bg-muted/20 transition-all ${
-              isStageFullScreen
-                ? 'fixed inset-0 z-50 w-screen h-screen bg-background p-6'
-                : 'h-full p-3'
-            }`}
-          >
-            {/* Stage Controls Bar */}
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/40 px-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRun}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                    runnerContext.isAnyCodeRunning
-                      ? 'bg-emerald-600/20 text-emerald-600'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
-                  }`}
-                  title="Executar no Palco"
-                >
-                  <Play className="w-4 h-4 fill-current ml-0.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                    runnerContext.isAnyCodeRunning
-                      ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  }`}
-                  title="Parar Execução"
-                >
-                  <Square className="w-4 h-4 fill-current" />
-                </button>
-              </div>
+            <BoardConnectionWarningModal />
+            <DeviceLostModal />
+            <RestoreConfirmModal />
+            <UploadTimeoutModal />
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsStageFullScreen(!isStageFullScreen)}
-                  className="p-2 rounded-xl hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                  title={isStageFullScreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
-                >
-                  {isStageFullScreen ? (
-                    <Minimize2 className="w-4 h-4" />
-                  ) : (
-                    <Maximize2 className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+            <CodePreview
+              isOpen={isCodePanelOpen}
+              isUploadMode={isUploadMode}
+              onToggle={() => setIsCodePanelOpen(false)}
+            />
 
-            {/* Stage Canvas Area */}
-            <div className="flex-1 min-h-[260px] max-h-[320px] rounded-2xl overflow-hidden border border-border/60 bg-card shadow-sm mb-3">
-              <StageArea />
-            </div>
+            {/* Floating button C++ / Arduino preview (Mode Upload) */}
+            <button
+              className="btn shadow-sm position-absolute d-flex align-items-center justify-content-center"
+              style={{
+                right: '15px',
+                top: '10px',
+                width: '45px',
+                height: '45px',
+                borderRadius: '12px',
+                zIndex: 1000,
+                backgroundColor: '#131432',
+                border: 'none',
+                color: '#fff',
+                opacity: isUploadMode && !isCodePanelOpen ? 1 : 0,
+                transform: isUploadMode && !isCodePanelOpen ? 'scale(1)' : 'scale(0.5)',
+                pointerEvents: isUploadMode && !isCodePanelOpen ? 'all' : 'none',
+                transition: 'all 0.3s ease',
+              }}
+              onClick={() => setIsCodePanelOpen(true)}
+              title="Ver Código C++"
+            >
+              <i className="bi bi-code-slash" style={{ fontSize: '1.2rem' }}></i>
+            </button>
 
-            {/* Sprites & Backdrops Management List */}
-            <div className="flex-1 flex flex-col rounded-2xl border border-border/60 bg-card/60 p-3 overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/40">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-primary" /> Atores & Cenários
-                </span>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <SpriteList />
-              </div>
+            {/* RIGHT PANEL: STAGE & MANAGEMENT */}
+            <div
+              className="p-0"
+              id="right-panel"
+              style={{
+                opacity: isUploadMode ? 0 : 1,
+                pointerEvents: isUploadMode ? 'none' : 'auto',
+                overflow: isUploadMode ? 'hidden' : undefined,
+                flex: isUploadMode ? '0 0 0' : undefined,
+                backgroundColor: '#e9eef2',
+                minWidth: 0,
+                display: isUploadMode ? 'none' : 'flex',
+                flexDirection: 'column',
+                paddingLeft: '12px',
+                paddingRight: '12px',
+                paddingTop: '0px',
+              }}
+            >
+              {!isUploadMode && (
+                <>
+                  <div
+                    className={`stage-section d-flex flex-column ${
+                      isStageFullScreen ? 'align-items-center fullscreen' : 'align-items-start'
+                    } w-100`}
+                    style={{ flex: '0 0 auto', backgroundColor: '#e9eef2' }}
+                  >
+                    <div
+                      className="stage-header w-100 d-flex align-items-center px-3"
+                      style={{ backgroundColor: '#e9eef2', minHeight: '52px' }}
+                    >
+                      <div className="d-flex align-items-center justify-content-start" style={{ flex: 1 }}>
+                        <div className="stage-controls d-flex align-items-center mb-0 gap-3">
+                          <button
+                            id="btnGo"
+                            className={`btn btn-link p-0 btn-go d-flex align-items-center ${
+                              runnerContext.isAnyCodeRunning ? 'inactive' : 'active'
+                            }`}
+                            title="Play"
+                            onClick={(e) => {
+                              handleRun();
+                              e.currentTarget.blur();
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === ' ') e.preventDefault();
+                            }}
+                          >
+                            <i className="bi bi-play-fill" style={{ fontSize: '1.8rem' }}></i>
+                          </button>
+                          <button
+                            id="btnStop"
+                            className={`btn btn-link p-0 btn-stop d-flex align-items-center ${
+                              runnerContext.isAnyCodeRunning ? 'active' : 'inactive'
+                            }`}
+                            title="Parar"
+                            onClick={(e) => {
+                              handleStop();
+                              e.currentTarget.blur();
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === ' ') e.preventDefault();
+                            }}
+                          >
+                            <i className="bi bi-octagon-fill" style={{ fontSize: '1.4rem' }}></i>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="d-flex align-items-center justify-content-end gap-3" style={{ flex: 1 }}>
+                        <button
+                          id="btnMaximize"
+                          className="btn btn-link p-0 d-flex align-items-center text-secondary"
+                          title={isStageFullScreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
+                          style={{ transition: 'color 0.2s' }}
+                          onClick={(e) => {
+                            setIsStageFullScreen(!isStageFullScreen);
+                            e.currentTarget.blur();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === ' ') e.preventDefault();
+                          }}
+                        >
+                          <i
+                            className={`bi ${isStageFullScreen ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'}`}
+                            style={{ fontSize: '1.1rem' }}
+                          ></i>
+                        </button>
+                        {activeExtensions.includes('piboard') && (
+                          <button
+                            id="btnInteractBoard"
+                            className="btn btn-sm btn-outline-secondary d-flex align-items-center py-0 px-2 flex-shrink-0"
+                            style={{ fontSize: '0.75rem', borderRadius: '20px', backgroundColor: '#fff' }}
+                            onClick={() => {
+                              if (!isSerialConnected) {
+                                alert('Conecte a placa primeiro clicando no ícone de USB na barra superior.');
+                                return;
+                              }
+                              setShowRestoreConfirmModal(true);
+                            }}
+                            title={
+                              isSerialConnected
+                                ? 'Clique para restaurar novamente'
+                                : 'Clique para interagir (Restaurar Firmware)'
+                            }
+                          >
+                            <i
+                              className={`bi ${isSerialConnected ? 'bi-usb-plug-fill' : 'bi-usb-plug'} me-1`}
+                              style={{ color: isSerialConnected ? '#22c55e' : 'inherit', fontSize: '1rem' }}
+                            ></i>
+                            <span>Interagir Placa</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <StageArea />
+                  </div>
+
+                  <div className="management-section flex-grow-1 d-flex flex-column">
+                    <SpriteList />
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
-
-      {/* Background Stage Bridge communication */}
-      <StageBridge />
-
-      {/* Machine Learning Recognition Floating Overlay Window */}
-      {isRecognitionWindowOpen && (
-        <MLRecognitionWindow
-          isOpen={isRecognitionWindowOpen}
-          onClose={() => setIsRecognitionWindowOpen(false)}
-        />
-      )}
-
-      {/* Global Modals */}
-      <BoardConnectionWarningModal />
-      <DeviceLostModal />
-      <RestoreConfirmModal />
-      <UploadTimeoutModal />
     </div>
   );
 }

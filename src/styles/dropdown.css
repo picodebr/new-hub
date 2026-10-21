@@ -1,0 +1,66 @@
+/**
+ * Estilização personalizada para menus dropdown e seletores.
+ */
+/* SCRATCH-STYLE DROPDOWN AESTHETICS (REMEDIATED) */
+ .blocklyDropDownDiv {
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+ .goog-menu,
+ .blocklyMenu {
+    background: #4C97FF;
+    /* Scratch Blue */
+    padding: 4px 0;
+    border: none;
+}
+
+ .goog-menuitem,
+ .blocklyMenuItem {
+    padding: 8px 16px;
+    color: white;
+    font-family: var(--font-outfit);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Centered text */
+    cursor: pointer;
+    position: relative;
+}
+
+ .goog-menuitem-content,
+ .blocklyMenuItemContent {
+    color: rgb(9, 9, 9);
+    text-align: center;
+    flex: 1;
+}
+
+ .goog-menuitem:hover,
+ .blocklyMenuItem:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Custom Scrollbar inside Dropdown (Thin White) */
+ .goog-menu::-webkit-scrollbar,
+ .blocklyMenu::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+    display: block;
+}
+
+ .goog-menu::-webkit-scrollbar-thumb,
+ .blocklyMenu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 10px;
+}
+
+/* Checkmark positioning */
+ .goog-menuitem-checkbox,
+ .blocklyMenuItemCheckbox {
+    position: absolute;
+    left: 8px;
+    filter: brightness(0) invert(1);
+    /* Make checkmark white */
+}

@@ -185,6 +185,7 @@ const BlocklyWorkspace = React.forwardRef<BlocklyWorkspaceRef, BlocklyWorkspaceP
 
   const { isLoadingBlocks } = useBlocklyModeSwitch({
     workspaceRef,
+    workspace,
     activeSpriteId,
     isUploadMode,
     activeExtensions,

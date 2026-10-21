@@ -1,0 +1,71 @@
+/* 
+   ESTILOS CUSTOMIZADOS PARA O CÉREBRO AI (MLExtensionModal)
+   Use este arquivo para efeitos que o Tailwind não cobre facilmente.
+*/
+
+.ai-modal-glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+
+.ai-card-glow:hover {
+    box-shadow: 0 0 25px rgba(76, 151, 255, 0.3);
+    border-color: #4C97FF;
+}
+
+.ai-card-selected-glow {
+    box-shadow: 0 0 30px rgba(255, 217, 61, 0.4);
+}
+
+/* Animação suave para entrada dos cards */
+@keyframes card-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.animate-card-pop {
+    animation: card-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Força o texto a parecer ter 5px usando escala, ignorando o limite mínimo do navegador */
+.text-force-5px {
+    font-size: 10px;
+    display: inline-block;
+    transform: scale(2);
+    transform-origin: center;
+    width: 200%;
+    /* Compensa o scale para o container não encolher */
+    margin-left: -50%;
+    /* Centraliza após o width de 200% */
+}
+
+/* Custom Scrollbar for Classes List */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #4C97FF;
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #3a86f0;
+}
+
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #4C97FF transparent;
+}

@@ -21,6 +21,7 @@ import { applyCustomCategoryIcons } from '@/_base/lib/blockly/categories';
 
 export interface UseBlocklyModeSwitchParams {
   workspaceRef: RefObject<Blockly.WorkspaceSvg | null>;
+  workspace?: Blockly.WorkspaceSvg | null;
   activeSpriteId: string;
   isUploadMode: boolean;
   activeExtensions: string[];
@@ -40,6 +41,7 @@ export interface UseBlocklyModeSwitchParams {
 export function useBlocklyModeSwitch(params: UseBlocklyModeSwitchParams) {
   const {
     workspaceRef,
+    workspace,
     activeSpriteId,
     isUploadMode,
     activeExtensions,
@@ -91,7 +93,8 @@ export function useBlocklyModeSwitch(params: UseBlocklyModeSwitchParams) {
   // --- 1. EFEITO DE CARGA DE BLOCOS (DESTRUTIVO) ---
   // Dispara apenas quando mudamos o "que" estamos editando (Ator ou Modo)
   useEffect(() => {
-    if (workspaceRef.current) {
+    const currentWs = workspace || workspaceRef.current;
+    if (currentWs) {
       // Se o alvo for o palco, agora permitimos a carga de blocos próprios do palco.
       const isStageSelected = activeSpriteId === 'stage' && !isUploadMode;
 
@@ -99,7 +102,7 @@ export function useBlocklyModeSwitch(params: UseBlocklyModeSwitchParams) {
       isLoadingBlocks.current = true;
 
       const timeoutId = setTimeout(() => {
-        const ws = workspaceRef.current;
+        const ws = workspace || workspaceRef.current;
         if (!ws || (ws as unknown as { disposed: boolean }).disposed || !ws.rendered) return;
 
         try {
@@ -230,7 +233,7 @@ export function useBlocklyModeSwitch(params: UseBlocklyModeSwitchParams) {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [isUploadMode, activeSpriteId, activeExtensions, activeStageMLModel, activeUploadMLModel, workspaceRef, loadProjectCounter]);
+  }, [workspace, isUploadMode, activeSpriteId, activeExtensions, activeStageMLModel, activeUploadMLModel, workspaceRef, loadProjectCounter, uploadModeBlocks]);
 
   // --- 2. EFEITO DE SINCRONIZAÇÃO DE VARIÁVEIS (NÃO-DESTRUTIVO) ---
   // Apenas garante que as variáveis do ProjectService existam no workspace

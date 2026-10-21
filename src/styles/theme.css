@@ -1,0 +1,35 @@
+/**
+ * Definições de variáveis de cores, fontes e tokens de design.
+ */
+/* ==================================================
+   PALETA DE CORES ROCKET (Baseado no ícone Rocket)
+   ================================================== */
+:root {
+  /* Cores derivadas do ícone Rocket */
+  --rocket-red: #FF6B6B;
+  /* Chama / Ponta */
+  --rocket-yellow: #FFD93D;
+  /* Corpo / Anel da Janela */
+  --rocket-blue: var(--scratch-blue);
+  --rocket-green: #6BCB77;
+  /* Asa / Janela */
+  --rocket-bg: #F0F4F8;
+  /* Fundo de Nuvem Clara */
+
+  /* Cores de Fundo e Texto Padrão para a IDE */
+  --code-background: #ffffff;
+  --code-foreground: #171717;
+
+  /* Cores do Scratch / Blockly */
+  --scratch-blue: #4c97ff;
+  --scratch-purple: #8b5cf6;
+  --scratch-orange: #FFAB19;
+  --scratch-green: #0FBD8C;
+  --scratch-red: #FF6680;
+  --scratch-lightblue: #e9eef2;
+
+  /* Breakpoints (Pontos de Interrupção para Responsividade) */
+  --bp-tablet: 1024px;
+  --bp-laptop: 1440px;
+  --bp-desktop: 1920px;
+}

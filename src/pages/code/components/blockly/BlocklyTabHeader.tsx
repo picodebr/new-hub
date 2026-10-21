@@ -15,7 +15,16 @@ interface BlocklyTabHeaderProps {
 
 export const BlocklyTabHeader: React.FC<BlocklyTabHeaderProps> = ({ activeTab, onTabChange, isStage }) => {
   return (
-    <div className="d-flex align-items-end" style={{ backgroundColor: '#e9eef2', minHeight: '52px' }}>
+    <div
+      className="d-flex flex-row align-items-end"
+      style={{
+        backgroundColor: '#e9eef2',
+        minHeight: '52px',
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+      }}
+    >
       <div
         onClick={() => onTabChange('code')}
         className={`d-flex align-items-center justify-content-center px-4 ${activeTab === 'code' ? 'bg-[#fafafa]' : 'text-secondary'}`}

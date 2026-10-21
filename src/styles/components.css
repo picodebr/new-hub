@@ -1,0 +1,104 @@
+/* ===============================
+   Componentes de UI Genéricos
+   =============================== */
+
+/* Barra de Navegação (Navbar Override) */
+ .navbar-dark.bg-primary {
+  background-color: var(--rocket-blue);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Botões Padrão (Overrides) */
+/**
+ * Estilos base para micro-componentes reutilizáveis da aplicação.
+ */
+.btn-primary {
+  background-color: var(--rocket-blue);
+  border-color: var(--rocket-blue);
+}
+
+.btn-primary:hover {
+  background-color: #3b7dd8;
+  border-color: #3b7dd8;
+}
+
+.btn-success {
+  background-color: var(--rocket-green);
+  border-color: var(--rocket-green);
+  color: #fff;
+}
+
+.btn-success:hover {
+  background-color: #5ab566;
+  border-color: #5ab566;
+  color: #fff;
+}
+
+.btn-danger {
+  background-color: var(--rocket-red);
+  border-color: var(--rocket-red);
+}
+
+.btn-danger:hover {
+  background-color: #e55a5a;
+  border-color: #e55a5a;
+}
+
+.btn-warning {
+  background-color: var(--rocket-yellow);
+  border-color: var(--rocket-yellow);
+  color: #333;
+}
+
+.btn-warning:hover {
+  background-color: #eec42d;
+  border-color: #eec42d;
+  color: #333;
+}
+
+/* Modais (Header e Close) */
+.modal-header {
+  background-color: var(--rocket-blue);
+  color: white;
+}
+
+.modal-header .btn-close {
+  filter: invert(1);
+}
+
+/* Cores de Ícones de Suporte */
+ .text-info {
+  color: var(--rocket-blue);
+}
+
+ .text-success {
+  color: var(--rocket-green);
+}
+
+/* Seletor de Modo (Toggle Mode) na Navbar */
+.mode-toggle-container {
+  background-color: var(--scratch-lightblue);
+  border-radius: 20px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.mode-toggle-container .mode-label {
+  font-weight: bold;
+  padding: 0 10px;
+  font-size: 0.9rem;
+}
+
+.btn-mode {
+  border: none;
+  font-weight: bold;
+  padding: 4px 12px;
+  border-radius: 15px;
+  background: white;
+}
+
+.btn-check:checked+.btn-mode {
+  background-color: var(--scratch-blue);
+  color: white;
+}

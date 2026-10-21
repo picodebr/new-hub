@@ -17,6 +17,7 @@ import {
 } from '../../domain/entities';
 import * as Blockly from 'blockly/core';
 import { javascriptGenerator } from 'blockly/javascript';
+import { arduinoGenerator } from '@/_base/generators/board';
 import { LocalStorageProjectRepository } from '../../adapters/LocalStorageProjectRepository';
 import { SaveProjectUseCase } from '../../use-cases/SaveProjectUseCase';
 import { ProjectMapper } from '../../adapters/mappers/ProjectMapper';
@@ -132,6 +133,19 @@ export const SerializationService = {
         projectService.updateSpriteBlocks(activeSpriteId, blocksJson, code);
       }
 
+      if (currentWorkspace && context.isUploadMode) {
+        const json = Blockly.serialization.workspaces.save(currentWorkspace);
+        const blocksJson: IBlocklyWorkspaceJson = {
+          blocks: (json.blocks as IBlocklyWorkspaceJson['blocks']) || { languageVersion: 0, blocks: [] },
+          variables: json.variables as IBlocklyWorkspaceJson['variables'],
+        };
+        const code = arduinoGenerator.workspaceToCode(currentWorkspace);
+        context.uploadModeBlocks = blocksJson;
+        context.uploadCode = code;
+        context.setUploadModeBlocks(blocksJson);
+        context.setUploadCode(code);
+      }
+
       // 2. MAPEAMENTO E PERSISTÊNCIA: Converte o contexto da UI em uma entidade
       // de domínio e salva no LocalStorage via UseCase.
       // await saveUseCase.execute(projectEntity);
@@ -195,29 +209,45 @@ export const SerializationService = {
   },
 
   /**
-   * Carrega um projeto a partir de um JSON importado pelo usuário.
+   * Carrega um projeto a partir de um JSON importado pelo usuário ou da API.
    */
-  loadProject: async (json: ProjectFile, context: IProjectContextUI) => {
+  loadProject: async (inputJson: any, context: IProjectContextUI) => {
     try {
-      // Nota: Em um cenário real, poderíamos carregar por ID do repositório,
-      // mas para upload de arquivos, mapeamos o JSON de entrada (DTO) para domínio.
-      // Por enquanto, mantemos a lógica de mapeamento legada durante a transição.
+      if (!inputJson) return;
+      const rawMeta: ProjectFile = inputJson?.sprites
+        ? inputJson
+        : inputJson?.metadata?.sprites
+        ? inputJson.metadata
+        : inputJson;
 
-      if (!json || !json.sprites) return;
+      if (!rawMeta || (!rawMeta.sprites && !rawMeta.uploadMode)) return;
+
+      const hasUploadBlocks = Boolean(
+        rawMeta?.uploadMode?.blocks?.blocks?.blocks &&
+        rawMeta.uploadMode.blocks.blocks.blocks.length > 0
+      );
+      const hasStageBlocks = Boolean(
+        rawMeta?.sprites?.some(
+          (s: any) => s?.blocks?.blocks?.blocks && s.blocks.blocks.blocks.length > 0
+        )
+      );
+      const isProjectUploadMode =
+        rawMeta?.settings?.mode === 'upload' ||
+        (!rawMeta?.settings?.mode && hasUploadBlocks && !hasStageBlocks);
 
       // 1. Restaura o modo (Palco vs Upload)
-      if (json.settings && json.settings.mode) context.setIsUploadMode(json.settings.mode === 'upload');
+      context.setIsUploadMode(isProjectUploadMode);
 
       // 2. Restaura as extensões ativas
-      if (json.extensions) context.setActiveExtensions(json.extensions);
-      if (json.extensionData?.ia) {
-        context.setActiveStageMLModel(json.extensionData.ia.activeStageModel);
-        context.setActiveUploadMLModel(json.extensionData.ia.activeUploadModel);
+      if (rawMeta.extensions) context.setActiveExtensions(rawMeta.extensions);
+      if (rawMeta.extensionData?.ia) {
+        context.setActiveStageMLModel(rawMeta.extensionData.ia.activeStageModel);
+        context.setActiveUploadMLModel(rawMeta.extensionData.ia.activeUploadModel);
       }
 
       // 3. Mapeia sprites e cenários do JSON para entidades
       const projectService = getProjectService();
-      const newSprites: SpriteData[] = json.sprites
+      const newSprites: SpriteData[] = (rawMeta.sprites || [])
         .filter((s: SpriteDataDTO) => !s.isClone)
         .map((s: SpriteDataDTO) => ({
           id: s.id || crypto.randomUUID(),
@@ -244,7 +274,7 @@ export const SerializationService = {
 
       // Registra blocos customizados por varredura (Fallback para arquivos antigos)
       const registeredIDs = new Set<string>();
-      json.sprites.forEach((sprite: SpriteDataDTO) => {
+      (rawMeta.sprites || []).forEach((sprite: SpriteDataDTO) => {
         if (sprite.blocks?.blocks?.blocks) {
           const traverseBlocks = (block: IBlocklyBlock) => {
             if (!block) return;
@@ -308,8 +338,8 @@ export const SerializationService = {
       });
 
       // Usa Metadados se disponíveis (Método preferido)
-      if (json.customProcedures && Array.isArray(json.customProcedures)) {
-        json.customProcedures.forEach((proc: CustomBlockSpec) => {
+      if (rawMeta.customProcedures && Array.isArray(rawMeta.customProcedures)) {
+        rawMeta.customProcedures.forEach((proc: CustomBlockSpec) => {
           registerCustomBlockFromSpec(proc);
         });
       }
@@ -331,7 +361,7 @@ export const SerializationService = {
       }
 
       // Restore upload variables from the blocks JSON (only Blockly format available)
-      const uploadVarsRaw = json.uploadMode?.blocks?.variables as Array<{ name: string; id: string; type: string }> | undefined;
+      const uploadVarsRaw = rawMeta.uploadMode?.blocks?.variables as Array<{ name: string; id: string; type: string }> | undefined;
       if (uploadVarsRaw && uploadVarsRaw.length > 0) {
         const uploadVars: SpriteVariable[] = uploadVarsRaw
           .filter((v) => v.type && v.type !== '')
@@ -339,9 +369,9 @@ export const SerializationService = {
         if (uploadVars.length > 0) projectService.setUploadVariables(uploadVars);
       }
 
-      if (json.stage?.backdrops) {
+      if (rawMeta.stage?.backdrops) {
         projectService.setBackdrops(
-          json.stage.backdrops.map((b: BackdropData & { sounds?: unknown; currentSoundId?: unknown }) => ({
+          rawMeta.stage.backdrops.map((b: BackdropData & { sounds?: unknown; currentSoundId?: unknown }) => ({
             id: b.id,
             name: b.name,
             url: b.url,
@@ -351,20 +381,20 @@ export const SerializationService = {
         );
       }
 
-      if (json.stage?.activeSpriteId) projectService.setActiveSpriteId(json.stage.activeSpriteId);
-      if (json.stage?.activeBackdropId) projectService.setActiveBackdropId(json.stage.activeBackdropId);
+      if (rawMeta.stage?.activeSpriteId) projectService.setActiveSpriteId(rawMeta.stage.activeSpriteId);
+      if (rawMeta.stage?.activeBackdropId) projectService.setActiveBackdropId(rawMeta.stage.activeBackdropId);
 
-      if (json.uploadMode) {
-        const blocks = json.uploadMode.blocks || null;
+      if (rawMeta.uploadMode) {
+        const blocks = rawMeta.uploadMode.blocks || null;
         const uploadBlocksJson = blocks as unknown as { blocks?: { blocks?: unknown[] } };
         const hasContents = !!(uploadBlocksJson?.blocks?.blocks && uploadBlocksJson.blocks.blocks.length > 0);
         context.setUploadModeBlocks(hasContents ? blocks : null);
-        context.setUploadCode(json.uploadMode.code || '');
+        context.setUploadCode(rawMeta.uploadMode.code || '');
       }
 
       // 5. Restaura mensagens de broadcast
-      if (json.broadcastMessages) {
-        projectService.setBroadcastMessages(json.broadcastMessages);
+      if (rawMeta.broadcastMessages) {
+        projectService.setBroadcastMessages(rawMeta.broadcastMessages);
       }
 
       // AVISA QUE O PROJETO MUDOU: Essencial para forçar reload do Blockly

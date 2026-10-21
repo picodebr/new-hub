@@ -1,0 +1,68 @@
+/* ===============================
+   Layout Global e Estrutura (TELA CHEIA)
+   =============================== */
+
+/* Forçar aplicação da fonte global e cor de fundo */
+
+html,
+body {
+  --toolbox-width: 72px;
+  /* Largura padrão da toolbox do Blockly */
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* Impede o scroll na janela do navegador */
+  font-family: var(--font-outfit), sans-serif;
+  background-color: var(--rocket-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Contêiner principal que preenche o resto da tela */
+ /**
+ * Definição do grid estrutural e organização das seções principais.
+ */
+.main-container {
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 0;
+  margin: 0;
+  max-width: 100%;
+}
+
+/* Linha que ocupa 100% da altura */
+.row.h-100 {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+/* Wrapper do Workspace - Apenas container de posicionamento */
+ .blockly-workspace-wrapper {
+  border: none;
+  border-radius: 16px;
+}
+
+/* Estrutura de Isolamento: Sidebar vs Área de Trabalho (Workspace) */
+#blockly-layout-container {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: #f9f9f9;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Contêiner unitário para a injeção do Blockly */
+#blockly-injection-container {
+  display: flex;
+  flex-direction: row;
+  background-color: #fff;
+  border-radius: 16px 0 0 16px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
