@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, X, ChevronDown, Search, Crown, Briefcase,
@@ -8,6 +8,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Student, Project } from './turmasData';
 import { cn } from '@/lib/utils';
+
+import { listAvailableUsersForGroupByProject } from '@/_base/services/group';
 
 export type GroupRole = 'lider' | 'gestor' | 'social' | 'construtor' | null;
 
@@ -20,12 +22,12 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentStudent: Student;
-  availableStudents: Student[];
+  availableStudents?: Student[];
   availableProjects: Project[];
   onCreate: (group: { name: string; projectId: string; members: GroupMember[] }) => void;
 }
 
-const ROLE_OPTIONS: { value: Exclude<GroupRole, null>; label: string; shortLabel: string; icon: typeof Crown; color: string; max: number }[] = [
+export const ROLE_OPTIONS: { value: Exclude<GroupRole, null>; label: string; shortLabel: string; icon: typeof Crown; color: string; max: number }[] = [
   { value: 'lider', label: 'Líder de Grupo', shortLabel: 'Líder', icon: Crown, color: 'hsl(45 93% 47%)', max: 1 },
   { value: 'gestor', label: 'Gestor de Projetos', shortLabel: 'Gestor', icon: Briefcase, color: 'hsl(217 91% 60%)', max: 1 },
   { value: 'social', label: 'Social Media', shortLabel: 'Social', icon: Megaphone, color: 'hsl(330 81% 60%)', max: 1 },
@@ -36,7 +38,7 @@ const MAX_MEMBERS = 8;
 const MIN_MEMBERS = 3;
 const RECOMMENDED = 5;
 
-const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availableStudents, availableProjects, onCreate }: Props) => {
+const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availableStudents = [], availableProjects, onCreate }: Props) => {
   const initialMembers = (): GroupMember[] => [{ student: currentStudent, role: 'lider' }];
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState<string>('');
@@ -45,6 +47,50 @@ const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availabl
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [openRoleFor, setOpenRoleFor] = useState<string | null>(null);
+  const [availableStudentsList, setAvailableStudentsList] = useState<Student[]>(availableStudents);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) {
+      setAvailableStudentsList([]);
+      return;
+    }
+    let mounted = true;
+    setLoadingStudents(true);
+    listAvailableUsersForGroupByProject(projectId)
+      .then((users) => {
+        if (mounted) {
+          const mapped: Student[] = (users || [])
+            .filter((u) => u.id !== currentStudent.id)
+            .map((u) => {
+              const displayName = u.display_name || u.name || 'Colega';
+              return {
+                id: u.id,
+                name: displayName,
+                username: `@${(u.username || displayName).toLowerCase().replace(/\s+/g, '-')}`,
+                initials: displayName.slice(0, 2).toUpperCase(),
+                color: 'hsl(var(--primary))',
+                status: 'Presente',
+                avatar: u.avatar || '',
+                groups: [],
+                coins: Number(u.metadata?.coins || 0),
+              };
+            });
+          setAvailableStudentsList(mapped);
+        }
+      })
+      .catch((err) => {
+        console.warn('Erro ao carregar colegas disponíveis para o grupo:', err);
+        if (mounted) setAvailableStudentsList([]);
+      })
+      .finally(() => {
+        if (mounted) setLoadingStudents(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [projectId, currentStudent.id]);
 
   const reset = () => {
     setName(''); setProjectId(''); setProjectPickerOpen(false);
@@ -66,11 +112,11 @@ const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availabl
 
   const filteredStudents = useMemo(() => {
     const selectedIds = new Set(members.map(m => m.student.id));
-    return availableStudents.filter(s =>
+    return availableStudentsList.filter(s =>
       !selectedIds.has(s.id) &&
       s.name.toLowerCase().includes(search.toLowerCase())
     );
-  }, [availableStudents, members, search]);
+  }, [availableStudentsList, members, search]);
 
   const canAddMore = members.length < MAX_MEMBERS;
 
@@ -98,10 +144,16 @@ const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availabl
   };
 
   const allHaveRoles = members.length > 0 && members.every(m => m.role !== null);
+  const hasRequiredRoles = roleCounts.lider === 1 && roleCounts.gestor === 1 && roleCounts.social === 1;
+  const hasEducator = !!selectedProject?.educator;
   const canCreate =
     name.trim().length > 0 &&
     !!projectId &&
+    hasEducator &&
     members.length >= MIN_MEMBERS &&
+    members.length <= MAX_MEMBERS &&
+    roleCounts.construtor <= 5 &&
+    hasRequiredRoles &&
     allHaveRoles;
 
   const progressPct = Math.min((members.length / RECOMMENDED) * 100, 100);
@@ -212,6 +264,31 @@ const StudentCreateGroupDialog = ({ open, onOpenChange, currentStudent, availabl
               )}
             </AnimatePresence>
           </div>
+
+          {/* Professor Responsável display or warning */}
+          {selectedProject && (
+            selectedProject.educator ? (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/30 border border-border/50">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                  {(selectedProject.educator.name || 'PR').slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Professor Responsável</p>
+                  <p className="text-xs font-bold text-foreground truncate">{selectedProject.educator.name}</p>
+                  {selectedProject.educator.email && (
+                    <p className="text-[10px] text-muted-foreground truncate">{selectedProject.educator.email}</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p>
+                  Este projeto não possui um professor responsável vinculado. Não é possível cadastrar grupo.
+                </p>
+              </div>
+            )
+          )}
 
           {/* Member picker */}
           <div className="space-y-2 relative">

@@ -1,372 +1,484 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Download, UserX, Users, TrendingUp, UserCheck, Search, X, FileSpreadsheet } from 'lucide-react';
-import { format } from 'date-fns';
+import {
+  CalendarDays,
+  Download,
+  Users,
+  TrendingUp,
+  UserCheck,
+  Search,
+  X,
+  FileSpreadsheet,
+  Save,
+  Loader2,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
+import {
+  format,
+  isWeekend,
+  isAfter,
+  startOfDay,
+  differenceInMonths,
+  eachDayOfInterval,
+} from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
 import { Turma } from './turmasData';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { addRollCall } from '@/_base/services/class';
+import { IHubClass } from '@/_base/interfaces/class';
 import { toast } from 'sonner';
 
 interface Props {
   turma: Turma;
+  hubClass?: IHubClass | null;
 }
 
-const AttendanceTab = ({ turma }: Props) => {
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+const AttendanceTab = ({ turma, hubClass }: Props) => {
+  const today = startOfDay(new Date());
+
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [search, setSearch] = useState('');
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [startDate, setStartDate] = useState<Date | undefined>();
-  const [endDate, setEndDate] = useState<Date | undefined>();
-  const [startCalOpen, setStartCalOpen] = useState(false);
-  const [endCalOpen, setEndCalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState<string>('');
+  const [exportEndDate, setExportEndDate] = useState<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Initialize attendanceMap from real hub_class.roll_calls
+  const effectiveClass = hubClass || turma.raw;
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, string[]>>(() => {
+    const initialMap: Record<string, string[]> = {};
+    if (effectiveClass?.roll_calls) {
+      effectiveClass.roll_calls.forEach((rollCall: any) => {
+        const dateKey = rollCall.roll_call_date.split('T')[0];
+        const studentIds = (rollCall.students_roll_calls || []).map(
+          (studentCall: any) => studentCall.hub_user_id
+        );
+        initialMap[dateKey] = studentIds;
+      });
+    }
+    return initialMap;
+  });
+
+  const dateKey = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
+  const presentIds = attendanceMap[dateKey] ?? [];
+
+  const studentsList = useMemo(() => {
+    return effectiveClass?.students || turma.students || [];
+  }, [effectiveClass?.students, turma.students]);
+
+  const filteredStudents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return studentsList;
+    return studentsList.filter((s: any) =>
+      (s.name || s.display_name || '').toLowerCase().includes(q)
+    );
+  }, [studentsList, search]);
+
+  const totalStudents = studentsList.length;
+  const attendancePercent =
+    totalStudents > 0 ? Math.round((presentIds.length / totalStudents) * 100) : 0;
+
+  // Toggle single student presence
+  const toggleAttendance = useCallback(
+    (studentId: string) => {
+      setAttendanceMap((prev) => {
+        const current = [...(prev[dateKey] ?? [])];
+        if (current.includes(studentId)) {
+          current.splice(current.indexOf(studentId), 1);
+        } else {
+          current.push(studentId);
+        }
+        return { ...prev, [dateKey]: current };
+      });
+      setHasUnsavedChanges(true);
+    },
+    [dateKey]
+  );
+
+  // Manual save handler
   const handleSaveAttendance = async () => {
     setIsSaving(true);
-    const presentStudents = Object.entries(attendance)
-      .filter(([_, isPresent]) => isPresent)
-      .map(([id]) => id);
-
     try {
       await addRollCall({
-        hub_class_id: turma.id,
+        hub_class_id: effectiveClass?.id || turma.id,
         roll_call_date: selectedDate.toISOString(),
-        students: presentStudents,
+        students: attendanceMap[dateKey] || [],
       });
+      setHasUnsavedChanges(false);
       toast.success('Lista de presença salva com sucesso!');
     } catch (err) {
-      console.warn('Erro ao salvar chamada remota:', err);
-      toast.success('Presença registrada localmente com sucesso!');
+      console.error('Erro ao salvar chamada remota:', err);
+      toast.error('Erro ao sincronizar chamada com o servidor.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const toggleAttendance = (studentId: string) => {
-    setAttendance(prev => ({ ...prev, [studentId]: !prev[studentId] }));
-  };
+  // Debounced auto-save (2000ms)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const timer = setTimeout(async () => {
+      try {
+        await addRollCall({
+          hub_class_id: effectiveClass?.id || turma.id,
+          roll_call_date: selectedDate.toISOString(),
+          students: attendanceMap[dateKey] || [],
+        });
+        setHasUnsavedChanges(false);
+      } catch (err) {
+        console.error('Erro no auto-save da chamada:', err);
+      }
+    }, 2000);
 
-  const filteredStudents = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const students = turma?.students || [];
-    if (!q) return students;
-    return students.filter(s => (s.name || '').toLowerCase().includes(q));
-  }, [turma?.students, search]);
+    return () => clearTimeout(timer);
+  }, [attendanceMap, dateKey, hasUnsavedChanges, effectiveClass?.id, turma.id, selectedDate]);
 
-  const presentCount = Object.values(attendance).filter(Boolean).length;
-  const totalStudents = (turma?.students || []).length;
-  const percentage = totalStudents > 0
-    ? Math.round((presentCount / totalStudents) * 100)
-    : 0;
+  // Export to professional Excel (.xlsx) using xlsx library
+  const handleExportXLSX = () => {
+    if (!exportStartDate || !exportEndDate) {
+      toast.error('Selecione as datas de início e fim.');
+      return;
+    }
 
-  const canDownload = startDate && endDate && startDate <= endDate;
+    const start = startOfDay(new Date(exportStartDate));
+    const end = startOfDay(new Date(exportEndDate));
 
-  const handleDownload = () => {
-    if (!canDownload) return;
-    const header = 'Nome,Username,Status\n';
-    const rows = (turma?.students || []).map(s =>
-      `${s.name},${s.username},${attendance[s.id] ? 'Presente' : 'Ausente'}`
-    ).join('\n');
+    if (start > end) {
+      toast.error('A data inicial não pode ser posterior à data final.');
+      return;
+    }
 
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `frequencia_${turma.name.replace(/\s/g, '_')}_${format(startDate!, 'yyyy-MM-dd')}_${format(endDate!, 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (differenceInMonths(end, start) > 6) {
+      toast.warning('O limite máximo para exportação do relatório é de 6 meses.');
+      return;
+    }
+
+    // 1. Working days interval
+    const daysInterval = eachDayOfInterval({ start, end }).filter((day) => !isWeekend(day));
+
+    if (daysInterval.length === 0) {
+      toast.warning('Nenhum dia útil encontrado no período selecionado.');
+      return;
+    }
+
+    // 2. Header: ['Data', Aluno 1, Aluno 2, ...]
+    const header = ['Data', ...studentsList.map((s: any) => s.name || s.display_name || 'Aluno')];
+
+    // 3. Matrix rows: ['dd/MM/yyyy', 'P' | 'F', ...]
+    const rows = daysInterval.map((day) => {
+      const currentKey = format(day, 'yyyy-MM-dd');
+      const presentInThisDay = attendanceMap[currentKey] || [];
+      const rowData = [format(day, 'dd/MM/yyyy')];
+
+      studentsList.forEach((s: any) => {
+        rowData.push(presentInThisDay.includes(s.id) ? 'P' : 'F');
+      });
+
+      return rowData;
+    });
+
+    // 4. Generate Workbook
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamada');
+
+    // Auto-fit column widths
+    const colWidths = header.map((h) => ({ wch: Math.max(h.length + 4, 12) }));
+    worksheet['!cols'] = colWidths;
+
+    // 5. Save file
+    const safeName = (turma.name || 'Turma').replace(/[\s/\\?%*:|"<>]/g, '_');
+    XLSX.writeFile(workbook, `Chamada_${safeName}_Relatorio.xlsx`);
+
     setExportOpen(false);
+    toast.success('Planilha Excel (.xlsx) gerada com sucesso!');
   };
-
-  const openExport = () => {
-    setStartDate(undefined);
-    setEndDate(undefined);
-    setExportOpen(true);
-  };
-
-  if (turma.students.length === 0) {
-    return (
-      <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
-        <UserX className="w-12 h-12 text-muted-foreground/40 mb-3" />
-        <p className="text-muted-foreground font-medium">Nenhum aluno nesta turma</p>
-      </div>
-    );
-  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-4"
-    >
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { icon: Users, label: 'TURMA', value: turma.name, highlight: true },
-          { icon: Users, label: 'ALUNOS', value: turma.students.length.toString() },
-          { icon: TrendingUp, label: 'PRESENÇA', value: `${percentage}%` },
-          { icon: UserCheck, label: 'PRESENTES AGORA', value: presentCount.toString() },
-        ].map((stat, i) => (
-          <div key={i} className={`glass-card p-3 md:p-4 ${stat.highlight ? 'border-primary/30' : ''}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <stat.icon className="w-4 h-4 text-primary/60" />
-              <span className="text-[10px] font-semibold text-primary uppercase tracking-wider">{stat.label}</span>
-            </div>
-            <p className="text-lg md:text-xl font-bold text-foreground">{stat.value}</p>
+    <div className="space-y-6">
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-4 rounded-2xl border border-border/70 bg-card shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Turma
+            </p>
+            <p className="text-xl font-extrabold text-foreground mt-1 truncate max-w-[180px]">
+              {turma.name}
+            </p>
           </div>
-        ))}
-      </div>
-
-      {/* Toolbar: Search + Date + Export */}
-      <div className="flex flex-col md:flex-row md:items-center gap-4">
-        <div className="relative flex-1 min-w-0">
-          <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar aluno por nome..."
-            className="w-full h-11 pl-10 pr-10 rounded-xl bg-card border border-border/60 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-accent transition-colors"
-              aria-label="Limpar busca"
-            >
-              <X className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          )}
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <CalendarDays className="w-5 h-5" />
+          </div>
         </div>
 
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "h-11 inline-flex items-center gap-2.5 px-4 rounded-xl bg-card border border-border/60 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-accent/40 hover:border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
-              )}
-            >
-              <CalendarDays className="w-4 h-4 text-primary" />
-              <span className="capitalize">
-                {format(selectedDate, "dd 'de' MMMM, yyyy", { locale: ptBR })}
-              </span>
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 rounded-2xl border-border/60 shadow-lg" align="end">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(d) => {
-                if (d) {
-                  setSelectedDate(d);
-                  setCalendarOpen(false);
-                }
-              }}
-              locale={ptBR}
-              initialFocus
-              className={cn("p-3 pointer-events-auto")}
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="p-4 rounded-2xl border border-border/70 bg-card shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Total Alunos
+            </p>
+            <p className="text-2xl font-extrabold text-foreground mt-1">{totalStudents}</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+            <Users className="w-5 h-5" />
+          </div>
+        </div>
 
-        <button
-          onClick={handleSaveAttendance}
-          disabled={isSaving}
-          className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white font-medium text-sm shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
-        >
-          <UserCheck className="w-4 h-4" />
-          {isSaving ? 'Salvando...' : 'Salvar Chamada'}
-        </button>
+        <div className="p-4 rounded-2xl border border-border/70 bg-card shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Presença
+            </p>
+            <p className="text-2xl font-extrabold text-foreground mt-1">{attendancePercent}%</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
 
-        <button
-          onClick={openExport}
-          className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-primary text-primary-foreground font-medium text-sm shadow-sm hover:brightness-110 transition-all"
-        >
-          <Download className="w-4 h-4" />
-          Exportar
-        </button>
+        <div className="p-4 rounded-2xl border border-border/70 bg-card shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Presentes Agora
+            </p>
+            <p className="text-2xl font-extrabold text-primary mt-1">{presentIds.length}</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <UserCheck className="w-5 h-5" />
+          </div>
+        </div>
       </div>
 
-      {/* Attendance list */}
-      <div className="space-y-2.5">
-        <AnimatePresence mode="popLayout">
-          {filteredStudents.map((student, i) => {
-            const present = !!attendance[student.id];
-            return (
-              <motion.div
-                key={student.id}
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ delay: Math.min(i * 0.03, 0.2), duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={{ y: -2 }}
-                className={cn(
-                  "group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-border/40 bg-card/60 px-4 py-3 transition-all duration-300 hover:border-border hover:bg-card hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)]",
-                  present && "border-primary/30 bg-primary/[0.03]"
-                )}
+      {/* Control bar */}
+      <div className="p-4 rounded-2xl border border-border/70 bg-card shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {/* Date Picker Popover */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-semibold text-foreground shadow-sm transition-colors"
               >
-                {/* Accent bar */}
-                <span
-                  className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-r-full opacity-60 transition-all duration-300 group-hover:h-12 group-hover:opacity-100"
-                  style={{ backgroundColor: student.color }}
-                />
+                <CalendarIcon className="w-4 h-4 text-primary" />
+                <span>{format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 rounded-2xl shadow-2xl border border-border" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedDate(date);
+                    setCalendarOpen(false);
+                  }
+                }}
+                disabled={(date) => isWeekend(date) || isAfter(startOfDay(date), today)}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
 
-                {/* Avatar */}
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 transition-transform duration-300 group-hover:scale-105"
-                  style={{ backgroundColor: student.color }}
-                >
-                  {student.initials}
+          {/* Search Input */}
+          <div className="relative flex-1 sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar aluno..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-border/80 bg-background text-xs font-medium focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 justify-end">
+          <button
+            type="button"
+            disabled={!hasUnsavedChanges || isSaving}
+            onClick={handleSaveAttendance}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-md transition-all ${
+              hasUnsavedChanges
+                ? 'bg-primary text-primary-foreground hover:brightness-105 animate-pulse'
+                : 'bg-muted text-muted-foreground/60 cursor-not-allowed border border-border/50'
+            }`}
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>Salvar Chamada</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setExportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border/80 bg-card hover:bg-accent/60 text-foreground font-bold text-xs shadow-sm transition-colors"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Relatório XLSX</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Attendance List Table */}
+      <div className="rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-border/50 bg-muted/20 flex items-center justify-between text-xs font-bold text-muted-foreground">
+          <div className="w-12 text-center">#</div>
+          <div className="flex-1">Aluno</div>
+          <div className="w-32 text-center">Último Acesso</div>
+          <div className="w-28 text-right pr-4">Presença</div>
+        </div>
+
+        <div className="divide-y divide-border/40">
+          {filteredStudents.map((student: any, idx: number) => {
+            const isPresent = presentIds.includes(student.id);
+            const lastAccessRaw = student.metadata?.last_access || student.lastAccess;
+            const lastAccessFormatted = lastAccessRaw
+              ? !isNaN(new Date(lastAccessRaw).getTime())
+                ? format(new Date(lastAccessRaw), 'dd/MM/yy')
+                : lastAccessRaw
+              : '-';
+
+            return (
+              <div
+                key={student.id}
+                className={`p-4 flex items-center justify-between gap-4 transition-colors ${
+                  isPresent ? 'bg-primary/5' : 'hover:bg-accent/30'
+                }`}
+              >
+                <div className="w-12 text-center text-xs font-mono font-bold text-muted-foreground">
+                  {idx + 1}
                 </div>
 
-                {/* Name + username */}
-                <div className="min-w-0 w-48 md:w-64 shrink-0">
-                  <p className="text-sm font-semibold text-foreground tracking-tight truncate">{student.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{student.username}</p>
-                </div>
-
-                {/* Last access */}
-                <div className="hidden md:flex flex-1 min-w-0">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/60 text-[11px] font-medium text-foreground/80 tabular-nums">
-                    <CalendarDays className="w-3 h-3 text-muted-foreground" />
-                    {student.lastAccess || 'Sem acesso'}
-                  </span>
-                </div>
-
-                {/* Status */}
-                <div className="flex items-center gap-3 shrink-0 ml-auto">
-                  <span
-                    className={cn(
-                      "hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tabular-nums transition-colors",
-                      present
-                        ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
-                        : "bg-muted text-muted-foreground"
-                    )}
+                <div className="flex-1 flex items-center gap-3 min-w-0">
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-sm"
+                    style={{ backgroundColor: student.color || 'hsl(var(--primary))' }}
                   >
-                    <span className={cn("w-1.5 h-1.5 rounded-full", present ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-                    {present ? 'Presente' : 'Ausente'}
+                    {student.initials ||
+                      (student.name || 'AL')
+                        .split(' ')
+                        .map((n: string) => n[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()}
+                  </div>
+                  <div className="truncate">
+                    <p className="text-sm font-bold text-foreground truncate">{student.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {student.username || `@${student.id}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="w-32 text-center text-xs font-medium text-muted-foreground">
+                  {lastAccessFormatted}
+                </div>
+
+                <div className="w-28 flex items-center justify-end pr-4 gap-2">
+                  <span
+                    className={`text-xs font-bold ${
+                      isPresent ? 'text-primary' : 'text-muted-foreground/60'
+                    }`}
+                  >
+                    {isPresent ? 'Presente' : 'Ausente'}
                   </span>
                   <Switch
-                    checked={present}
+                    checked={isPresent}
                     onCheckedChange={() => toggleAttendance(student.id)}
                   />
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-        </AnimatePresence>
 
-        {filteredStudents.length === 0 && (
-          <div className="glass-card px-5 py-10 text-center text-sm text-muted-foreground">
-            Nenhum aluno encontrado para "{search}"
-          </div>
-        )}
+          {filteredStudents.length === 0 && (
+            <div className="p-12 text-center text-muted-foreground italic text-sm">
+              Nenhum aluno encontrado.
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Export modal */}
+      {/* Export Frequency Modal (.xlsx) */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-        <DialogContent className="sm:max-w-[460px] rounded-2xl border-border/60 p-0 overflow-hidden">
-          <div className="p-6 space-y-5">
-            <DialogHeader className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <FileSpreadsheet className="w-5 h-5 text-primary" />
-                </div>
-                <DialogTitle className="text-lg font-semibold text-foreground">
-                  Relatório de Frequência
-                </DialogTitle>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+                <FileSpreadsheet className="w-5 h-5" />
               </div>
-              <DialogDescription className="text-sm text-muted-foreground">
-                Selecione o período para gerar a planilha formatada (.xlsx).
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Start */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Início</label>
-                <Popover open={startCalOpen} onOpenChange={setStartCalOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="w-full h-11 inline-flex items-center justify-between px-3.5 rounded-xl bg-card border border-border/60 text-sm shadow-sm hover:border-primary/40 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <span className={cn("truncate", !startDate && "text-muted-foreground")}>
-                        {startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : "dd/mm/aaaa"}
-                      </span>
-                      <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 rounded-2xl border-border/60 shadow-lg" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={(d) => { if (d) { setStartDate(d); setStartCalOpen(false); } }}
-                      locale={ptBR}
-                      initialFocus
-                      className={cn("p-3 pointer-events-auto")}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* End */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Fim</label>
-                <Popover open={endCalOpen} onOpenChange={setEndCalOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="w-full h-11 inline-flex items-center justify-between px-3.5 rounded-xl bg-card border border-border/60 text-sm shadow-sm hover:border-primary/40 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <span className={cn("truncate", !endDate && "text-muted-foreground")}>
-                        {endDate ? format(endDate, "dd/MM/yyyy", { locale: ptBR }) : "dd/mm/aaaa"}
-                      </span>
-                      <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 rounded-2xl border-border/60 shadow-lg" align="end">
-                    <Calendar
-                      mode="single"
-                      selected={endDate}
-                      onSelect={(d) => { if (d) { setEndDate(d); setEndCalOpen(false); } }}
-                      locale={ptBR}
-                      disabled={(d) => (startDate ? d < startDate : false)}
-                      initialFocus
-                      className={cn("p-3 pointer-events-auto")}
-                    />
-                  </PopoverContent>
-                </Popover>
+              <div>
+                <DialogTitle>Relatório de Frequência</DialogTitle>
+                <DialogDescription>
+                  Gere a planilha Excel (.xlsx) com a frequência diária dos alunos
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            {startDate && endDate && startDate > endDate && (
-              <p className="text-xs text-destructive">A data final deve ser igual ou posterior à inicial.</p>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setExportOpen(false)}
-                className="h-10 px-4 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDownload}
-                disabled={!canDownload}
-                className="h-10 inline-flex items-center gap-2 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                <Download className="w-4 h-4" />
-                Baixar Planilha
-              </button>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Data Inicial</label>
+              <input
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-medium outline-none focus:border-primary"
+              />
             </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Data Final</label>
+              <input
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-medium outline-none focus:border-primary"
+              />
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              * Apenas dias úteis serão incluídos na planilha. O intervalo máximo permitido é de 6 meses.
+            </p>
           </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              onClick={() => setExportOpen(false)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-accent"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleExportXLSX}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm shadow-md hover:brightness-105"
+            >
+              <Download className="w-4 h-4" />
+              Gerar Excel (.xlsx)
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   );
 };
 

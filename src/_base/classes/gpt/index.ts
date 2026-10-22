@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { OpenAI } from 'openai';
+import OpenAI from 'openai';
 
 type Prompts = { topic: string; grade: string };
 type ToolPrompts = { tools: string[]; previousResponse: string };
@@ -23,92 +23,117 @@ export interface AutoGenerateResponse {
 }
 
 type RawGenerateFuncType = (data: Prompts) => Promise<AutoGenerateResponse>;
-
 type ToolsGenerateFuncType = (data: ToolPrompts) => Promise<string[]>;
 
+const getGptKey = () => {
+  return (
+    (import.meta as any).env?.VITE_OPENAI_API_KEY ||
+    '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'
+  );
+};
+
 export const generateProjectWithAI: RawGenerateFuncType = async ({ grade, topic }) => {
-  // try {
-  //   const gptKey = ``;
-  //   if (!gptKey) throw new Error('Not found api key');
+  try {
+    const gptKey = getGptKey();
+    if (!gptKey) throw new Error('Not found api key');
 
-  //   const openai = new OpenAI({ apiKey: gptKey, dangerouslyAllowBrowser: true });
+    const openai = new OpenAI({ apiKey: gptKey, dangerouslyAllowBrowser: true });
 
-  //   const FINAL_PROMPT = `Me dê um exemplo de atividade maker, levando em conta a BNCC, para ensinar sobre ${topic}, para alunos do ${grade}º ANO. Liste, ao final, as habilidades da BNCC com o código, que foram usadas nessa atividade.
+    const FINAL_PROMPT = `Me dê um exemplo de atividade maker, levando em conta a BNCC, para ensinar sobre ${topic}, para alunos do ${grade}º ANO. Liste, ao final, as habilidades da BNCC com o código, que foram usadas nessa atividade.
 
-  //   Considere sempre 4 etapas, sendo a primeira etapa de contextualização do tema, envolvendo pesquisas e discussões, a segunda etapa para planejamento do que será construído, a terceira etapa de construção - nesta você pode criar um passo a passo, caso o projeto já tenha - e a última etapa de apresentação e/ou testes do que foi construído.
+Considere sempre 4 etapas, sendo a primeira etapa de contextualização do tema, envolvendo pesquisas e discussões, a segunda etapa para planejamento do que será construído, a terceira etapa de construção - nesta você pode criar um passo a passo, caso o projeto já tenha - e a última etapa de apresentação e/ou testes do que foi construído.
 
-  //   Apresente o objetivo da atividade no início e, antes de falar das etapas, liste as ferramentas que serão necessárias para esse projeto.
+Apresente o objetivo da atividade no início e, antes de falar das etapas, liste as ferramentas que serão necessárias para esse projeto.
 
-  //   Por fim formule a resposta em uma estrutura JSON, restritamente e exatamente como esta: {"title": "Titulo do projeto", "objective": "Objetivo e detalhes do projeto","materials": ["material 1", "material 2"], "steps":[{"title": "Título da etapa 1", "description": "Descrição da etapa 1"},{"title": "Título da etapa 2", "description": "Descrição da etapa 2"}], "bncc": [{"Código da habilidade BNCC":"Descrição da atividade BNCC"}]}`;
+Por fim formule a resposta em uma estrutura JSON, restritamente e exatamente como esta: {"title": "Titulo do projeto", "objective": "Objetivo e detalhes do projeto","materials": ["material 1", "material 2"], "steps":[{"title": "Título da etapa 1", "description": "Descrição da etapa 1"},{"title": "Título da etapa 2", "description": "Descrição da etapa 2"}], "bncc": [{"Código da habilidade BNCC":"Descrição da atividade BNCC"}]}`;
 
-  //   const data = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: FINAL_PROMPT }] });
+    const data = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: FINAL_PROMPT }],
+    });
 
-  //   const rawResponse = data.choices[0].message.content || '';
+    const rawResponse = data.choices[0]?.message?.content || '';
 
-  //   const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    let jsonString = '';
+    const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonString = jsonMatch[1].trim();
+    } else {
+      const matchObj = rawResponse.match(/\{[\s\S]*\}/);
+      if (matchObj) jsonString = matchObj[0].trim();
+      else jsonString = rawResponse.trim();
+    }
 
-  //   if (!jsonMatch) {
-  //     throw new Error('JSON não encontrado na resposta da API.');
-  //   }
+    const parsedResponse = JSON.parse(jsonString);
 
-  //   const jsonString = jsonMatch[1].trim();
+    const stepsWithPosition = (parsedResponse.steps || []).map((step: any, index: number) => ({
+      title: step.title || `Etapa ${index + 1}`,
+      description: step.description || '',
+      position: index + 1,
+    }));
 
-  //   const parsedResponse = JSON.parse(jsonString);
+    const bnccTag: string[] = (parsedResponse.bncc || []).map((item: Record<string, string>) => Object.keys(item)[0]);
 
-  //   // Modifica o conteúdo para incluir 'position' em cada etapa
-  //   const stepsWithPosition = parsedResponse.steps.map((step: { title: string; description: string }, index: number) => ({
-  //     title: step.title,
-  //     description: step.description,
-  //     position: index + 1,
-  //   }));
-  //   // Modifica o conteúdo para incluir somente as tags do BNCC
-  //   const bnccTag: string[] = parsedResponse.bncc.map((item: Record<string, string>) => Object.keys(item)[0]);
+    const completionData: AutoGenerateResponse = {
+      ai_model: data.model,
+      total_used_tokens: data.usage?.total_tokens,
+      answer: { used_tokens: data.usage?.prompt_tokens, content: FINAL_PROMPT },
+      response: {
+        used_tokens: data.usage?.completion_tokens,
+        content: {
+          title: parsedResponse.title || `Projeto sobre ${topic}`,
+          objective: parsedResponse.objective || '',
+          materials: parsedResponse.materials || [],
+          steps: stepsWithPosition,
+          bncc: parsedResponse.bncc || [],
+          bnccTags: bnccTag,
+        },
+      },
+    };
 
-  //   const completionData: AutoGenerateResponse = {
-  //     ai_model: data.model,
-  //     total_used_tokens: data.usage?.total_tokens,
-  //     answer: { used_tokens: data.usage?.prompt_tokens, content: FINAL_PROMPT },
-  //     response: {
-  //       used_tokens: data.usage?.completion_tokens,
-  //       content: { ...parsedResponse, steps: stepsWithPosition, bnccTags: bnccTag },
-  //     },
-  //   };
-
-  //   return completionData;
-  // } catch (error: any) {
-  //   console.error(JSON.stringify(error, null, 4));
-  //   return null;
-  // }
-  return {} as any;
+    return completionData;
+  } catch (error: any) {
+    console.error('Erro ao gerar projeto com IA:', error);
+    throw error;
+  }
 };
 
 export const generateProjectToolsWithAI: ToolsGenerateFuncType = async ({ tools, previousResponse }) => {
   try {
-    // const gptKey = ``;
-    // if (!gptKey) throw new Error('Not found api key');
+    const gptKey = getGptKey();
+    if (!gptKey) throw new Error('Not found api key');
 
-    // const openai = new OpenAI({ apiKey: gptKey, dangerouslyAllowBrowser: true });
+    const openai = new OpenAI({ apiKey: gptKey, dangerouslyAllowBrowser: true });
 
-    // const EDITING_PROMPT = `Não tenho as ferramentas ${tools.join(
-    //   ', ',
-    // )}, pode me gerar similares e simples com base no projeto gerado na resposta anterior.
-    // Por fim formule a resposta em uma estrutura JSON, restritamente e exatamente como esta: ["material 1", "material 2", "material 3"], respeitando a quantidade de materiais necessários.`;
-    // const data = await openai.chat.completions.create({
-    //   model: 'gpt-4o-mini',
-    //   messages: [
-    //     { role: 'system', content: previousResponse },
-    //     { role: 'user', content: EDITING_PROMPT },
-    //   ],
-    // });
+    const EDITING_PROMPT = `Não tenho as ferramentas ${tools.join(
+      ', ',
+    )}, pode me gerar similares e simples com base no projeto gerado na resposta anterior.
+Por fim formule a resposta em uma estrutura JSON, restritamente e exatamente como esta: ["material 1", "material 2", "material 3"], respeitando a quantidade de materiais necessários.`;
 
-    // const rawResponse = data.choices[0].message.content || '';
-    // console.log(rawResponse);
+    const data = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: previousResponse },
+        { role: 'user', content: EDITING_PROMPT },
+      ],
+    });
 
-    // const parsedResponse: string[] = JSON.parse(rawResponse);
-    // return parsedResponse;
-    return [];
+    const rawResponse = data.choices[0]?.message?.content || '';
+
+    let jsonString = '';
+    const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonString = jsonMatch[1].trim();
+    } else {
+      const matchObj = rawResponse.match(/\[[\s\S]*\]/);
+      if (matchObj) jsonString = matchObj[0].trim();
+      else jsonString = rawResponse.trim();
+    }
+
+    const parsedResponse: string[] = JSON.parse(jsonString);
+    return parsedResponse;
   } catch (error: any) {
-    console.error(JSON.stringify(error, null, 4));
+    console.error('Erro ao gerar materiais com IA:', error);
     return [];
   }
 };

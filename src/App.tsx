@@ -10,6 +10,7 @@ import Dashboard, { DashboardHome } from "./pages/Dashboard";
 import CodeIdePage from "./pages/CodeIdePage";
 import VisionLabPage from "./pages/VisionLabPage";
 import NotFound from "./pages/NotFound";
+import ExportPdfClassForms from "./pages/ExportPdfClassForms";
 
 import TurmasView from "@/components/dashboard/turmas/TurmasView";
 import TurmaDetail from "@/components/dashboard/turmas/TurmaDetail";
@@ -129,6 +130,9 @@ const App = () => (
               {/* Fullscreen IDE Routes */}
               <Route path="/code/:folderId/:projectId" element={<CodeIdePage />} />
               <Route path="/vision-lab/:folderId/:projectId" element={<VisionLabPage />} />
+
+              {/* PDF Export Route */}
+              <Route path="/export-pdf/class-forms" element={<ExportPdfClassForms />} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />

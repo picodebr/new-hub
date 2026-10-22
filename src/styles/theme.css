@@ -32,4 +32,9 @@
   --bp-tablet: 1024px;
   --bp-laptop: 1440px;
   --bp-desktop: 1920px;
+
+  /* Fontes */
+  --font-outfit: 'Outfit', sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Poppins', sans-serif;
 }

@@ -4,19 +4,16 @@
 
 /* Forçar aplicação da fonte global e cor de fundo */
 
-html,
-body {
+:root {
   --toolbox-width: 72px;
-  /* Largura padrão da toolbox do Blockly */
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  /* Impede o scroll na janela do navegador */
+}
+
+body.stage-mode,
+body.upload-mode,
+.main-ide-content,
+.main-container {
   font-family: var(--font-outfit), sans-serif;
   background-color: var(--rocket-bg);
-  display: flex;
-  flex-direction: column;
 }
 
 /* Contêiner principal que preenche o resto da tela */

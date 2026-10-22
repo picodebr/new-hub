@@ -38,3 +38,4 @@ export * from './validateEmail';
 export * from './validatePassword';
 export * from './writeSerialCode';
 export * from './capitalizeString';
+export * from './getColorByGrade';

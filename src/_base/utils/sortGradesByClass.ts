@@ -49,4 +49,5 @@ const getIndex = (grade?: string) => {
   return index === -1 ? 999 : index;
 };
 
-export const sortGradesByClass: FuncType = (classes) => [...classes].sort((a, b) => getIndex(a.grade) - getIndex(b.grade));
+export const sortGradesByClass = <T extends { grade?: string | null }>(classes: T[]): T[] =>
+  [...classes].sort((a, b) => getIndex(a.grade || '') - getIndex(b.grade || ''));

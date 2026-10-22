@@ -14,6 +14,7 @@ interface StudentGroup {
   projectName: string;
   turmaName: string;
   membersCount: number;
+  isPending?: boolean;
   members: { id: string; initials: string; color: string }[];
 }
 
@@ -41,80 +42,87 @@ const StudentGroupsView = () => {
 
   const activeSchoolId = chosenSchool?.hub_school_id || user?.chosen_school_id || '';
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
+  const loadData = async () => {
+    try {
+      if (isStudent) {
+        const [remoteGroups, projects] = await Promise.all([
+          listStudentGroups().catch(() => []),
+          listAvailableProjectsForStudent().catch(() => []),
+        ]);
 
-    const loadData = async () => {
-      try {
-        if (isStudent) {
-          const [remoteGroups, projects] = await Promise.all([
-            listStudentGroups().catch(() => []),
-            listAvailableProjectsForStudent().catch(() => []),
-          ]);
-
-          if (mounted) {
-            setAvailableProjects(projects || []);
-            const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
-              id: g.id,
-              name: g.name || 'Grupo',
-              projectName: g.project?.title || 'Projeto',
-              turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || 'Turma',
-              membersCount: g.students?.length || g.student_links?.length || 0,
-              members: (g.students || []).map((s: any) => ({
-                id: s.id,
-                initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
-                color: accentFor(s.id || '1'),
-              })),
-            }));
-            setGroups(mapped);
-          }
-        } else if (activeSchoolId) {
-          const remoteGroups = await listTeacherGroups(activeSchoolId).catch(() => []);
-          if (mounted) {
-            const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
-              id: g.id,
-              name: g.name || 'Grupo',
-              projectName: g.project?.title || 'Projeto',
-              turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || 'Turma',
-              membersCount: g.students?.length || 0,
-              members: (g.students || []).map((s: any) => ({
-                id: s.id,
-                initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
-                color: accentFor(s.id || '1'),
-              })),
-            }));
-            setGroups(mapped);
-          }
-        }
-      } catch (err) {
-        console.warn('Erro ao carregar grupos:', err);
-      } finally {
-        if (mounted) setLoading(false);
+        setAvailableProjects(projects || []);
+        const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
+          id: g.id,
+          name: g.display_name || g.name || 'Grupo',
+          projectName: g.project?.title || 'Projeto',
+          turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || (g.project?.hub_class?.grade ? `Turma ${g.project.hub_class.grade}` : 'Turma'),
+          membersCount: g.students?.length || g.student_links?.length || 0,
+          isPending: !g.approved_at,
+          members: (g.students || []).map((s: any) => ({
+            id: s.id,
+            initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+            color: accentFor(s.id || '1'),
+          })),
+        }));
+        setGroups(mapped);
+      } else if (activeSchoolId) {
+        const remoteGroups = await listTeacherGroups(activeSchoolId).catch(() => []);
+        const mapped: StudentGroup[] = (remoteGroups || []).map((g: any) => ({
+          id: g.id,
+          name: g.display_name || g.name || 'Grupo',
+          projectName: g.project?.title || 'Projeto',
+          turmaName: g.project?.hub_class?.display_name || g.project?.hub_class?.name || (g.project?.hub_class?.grade ? `Turma ${g.project.hub_class.grade}` : 'Turma'),
+          membersCount: g.students?.length || 0,
+          isPending: !g.approved_at,
+          members: (g.students || []).map((s: any) => ({
+            id: s.id,
+            initials: (s.display_name || s.name || 'AL').slice(0, 2).toUpperCase(),
+            color: accentFor(s.id || '1'),
+          })),
+        }));
+        setGroups(mapped);
       }
-    };
+    } catch (err) {
+      console.warn('Erro ao carregar grupos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    setLoading(true);
     loadData();
-    return () => {
-      mounted = false;
-    };
   }, [isStudent, activeSchoolId]);
+
+  const ROLE_LABEL_MAP: Record<string, string> = {
+    lider: 'Líder de Grupo',
+    gestor: 'Gestor de Projetos',
+    social: 'Social Media',
+    construtor: 'Construtor',
+  };
 
   const handleCreate = async ({ name, projectId, members }: { name: string; projectId: string; members: GroupMember[] }) => {
     try {
-      const created = await createGroup({
-        name,
-        project_id: projectId,
-        members: members.map((m) => ({ hub_user_id: m.student.id, role: m.role as any })),
-      } as any);
+      const user_roles: Record<string, string> = {};
+      members.forEach((m) => {
+        user_roles[m.student.id] = (m.role && ROLE_LABEL_MAP[m.role]) || 'Construtor';
+      });
 
-      toast.success('Grupo criado com sucesso!');
-      if (created) {
+      const created = await createGroup({
+        display_name: name.trim(),
+        hub_project_class_id: projectId,
+        users: members.map((m) => m.student.id),
+        user_roles,
+      });
+
+      toast.success(isStudent ? 'Solicitação de criação de grupo enviada para o professor' : 'Grupo criado com sucesso!');
+      await loadData();
+      if (created?.id) {
         navigate(`/groups/${created.id}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Erro ao criar grupo na API:', err);
-      toast.error('Erro ao criar grupo');
+      toast.error(err?.response?.data?.message || 'Erro ao criar grupo');
     }
   };
 
@@ -213,16 +221,23 @@ const StudentGroupsView = () => {
                       >
                         <Users className="h-[18px] w-[18px]" style={{ color: accent }} strokeWidth={2.2} />
                       </div>
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums backdrop-blur-md"
-                        style={{
-                          backgroundColor: `${accent}1f`,
-                          color: accent,
-                          border: `1px solid ${accent}33`,
-                        }}
-                      >
-                        {g.projectName}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums backdrop-blur-md"
+                          style={{
+                            backgroundColor: `${accent}1f`,
+                            color: accent,
+                            border: `1px solid ${accent}33`,
+                          }}
+                        >
+                          {g.projectName}
+                        </span>
+                        {g.isPending && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Pendente de aprovação
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="text-base font-semibold text-foreground tracking-tight truncate mb-1">
@@ -278,6 +293,7 @@ const StudentGroupsView = () => {
           status: p.status || 'Em Execução',
           date: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : 'Hoje',
           hasCover: false,
+          educator: p.educator || p.user || null,
         })) as any}
         onCreate={handleCreate}
       />

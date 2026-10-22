@@ -282,6 +282,7 @@ const EstoqueView = () => {
       setResales((prev) => prev.filter((r) => r.id !== resaleId));
       setSelectedResale(null);
       toast.success('Revenda aceita com sucesso!');
+      await loadData();
     } catch (err) {
       console.error('Erro ao aceitar revenda:', err);
       toast.error('Erro ao aceitar revenda');
@@ -351,7 +352,7 @@ const EstoqueView = () => {
       });
       toast.success('Consumo do serviço atualizado!');
       setServiceToUpdate(null);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Erro ao atualizar consumo do serviço:', err);
       toast.error('Erro ao atualizar consumo do serviço');
@@ -383,21 +384,9 @@ const EstoqueView = () => {
   const handleApproveOrder = async (order: IHubGroupOrder) => {
     try {
       await acceptOrder({ order_id: order.id, group_id: order.hub_group_id });
-      setGroups((prev) =>
-        prev.map((g) => {
-          if (g.id === order.hub_group_id) {
-            return {
-              ...g,
-              orders: (g.orders || []).map((o) =>
-                o.id === order.id ? { ...o, approved_at: new Date().toISOString() } : o
-              ),
-            };
-          }
-          return g;
-        })
-      );
       setSelectedOrder(null);
       toast.success('Pedido aprovado com sucesso!');
+      await loadData();
     } catch (err) {
       console.error('Erro ao aprovar pedido:', err);
       toast.error('Erro ao aprovar pedido');
@@ -407,23 +396,9 @@ const EstoqueView = () => {
   const handleRejectOrder = async (order: IHubGroupOrder) => {
     try {
       await rejectOrder({ order_id: order.id, group_id: order.hub_group_id });
-      setGroups((prev) =>
-        prev.map((g) => {
-          if (g.id === order.hub_group_id) {
-            return {
-              ...g,
-              orders: (g.orders || []).map((o) =>
-                o.id === order.id
-                  ? { ...o, metadata: { ...o.metadata, denied_at: new Date().toISOString() } }
-                  : o
-              ),
-            };
-          }
-          return g;
-        })
-      );
       setSelectedOrder(null);
       toast.success('Pedido negado!');
+      await loadData();
     } catch (err) {
       console.error('Erro ao negar pedido:', err);
       toast.error('Erro ao negar pedido');
@@ -677,7 +652,7 @@ const EstoqueView = () => {
                       className="w-20 h-20 rounded-xl object-contain bg-muted/40 p-1 border border-border/40"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1">
+                      <div className="flex items-start justify-between gap-1 flex-wrap">
                         <h4 className="font-semibold text-sm text-foreground line-clamp-1">
                           {resale.store_maker_item?.name || 'Componente Maker'}
                         </h4>
@@ -685,6 +660,15 @@ const EstoqueView = () => {
                           Pendente
                         </span>
                       </div>
+                      <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        resale.metadata?.target_buyer === 'teacher'
+                          ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                          : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                      }`}>
+                        {resale.metadata?.target_buyer === 'teacher'
+                          ? 'Venda para o Professor (Retorna ao Estoque)'
+                          : 'Venda para Grupos (Marketplace)'}
+                      </span>
                       <p className="text-xs text-muted-foreground mt-1">
                         Grupo: <span className="font-medium text-foreground">{resale.seller_group?.display_name || 'Grupo'}</span>
                       </p>
@@ -1105,9 +1089,18 @@ const EstoqueView = () => {
                   <h4 className="font-semibold text-sm text-foreground">
                     {selectedResale.store_maker_item?.name}
                   </h4>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Grupo vendedor: {selectedResale.seller_group?.display_name}
                   </p>
+                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    selectedResale.metadata?.target_buyer === 'teacher'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                      : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                  }`}>
+                    {selectedResale.metadata?.target_buyer === 'teacher'
+                      ? 'Venda para o Professor (Retorna ao Estoque)'
+                      : 'Venda para Grupos (Marketplace)'}
+                  </span>
                   <p className="text-xs font-bold text-primary mt-1">
                     R$ {selectedResale.price} ({selectedResale.quantity} un.)
                   </p>
@@ -1155,56 +1148,78 @@ const EstoqueView = () => {
             </DialogTitle>
           </DialogHeader>
 
-          {serviceToUpdate && (
-            <div className="space-y-4 pt-2">
-              <p className="text-xs text-muted-foreground">
-                Serviço: <span className="font-semibold text-foreground">{serviceToUpdate.store_item?.name}</span>
-              </p>
+          {serviceToUpdate && (() => {
+            const consumed = serviceToUpdate.order_item_metadata?.service_consumed_quantity || 0;
+            const remaining = Math.max(0, serviceToUpdate.quantity - consumed);
+            return (
+              <div className="space-y-4 pt-2">
+                <p className="text-xs text-muted-foreground">
+                  Serviço: <span className="font-semibold text-foreground">{serviceToUpdate.store_item?.name}</span>
+                </p>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Quantidade consumida (Horas)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max={serviceToUpdate.quantity}
-                  value={serviceConsumedQty}
-                  onChange={(e) => setServiceConsumedQty(Number(e.target.value))}
-                  className="w-full h-10 px-3 rounded-xl bg-card border border-border/60 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
+                <div className="p-2.5 rounded-xl bg-accent/30 text-xs space-y-1 border border-border/40">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total contratado:</span>
+                    <span className="font-bold">{serviceToUpdate.quantity}h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Horas já utilizadas:</span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">{consumed}h</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border/40 pt-1">
+                    <span className="text-muted-foreground">Saldo restante:</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{remaining}h</span>
+                  </div>
+                </div>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Data de consumo
-                </label>
-                <input
-                  type="date"
-                  value={serviceConsumedDate}
-                  onChange={(e) => setServiceConsumedDate(e.target.value)}
-                  className="w-full h-10 px-3 rounded-xl bg-card border border-border/60 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                    Quantidade a descontar (Horas) — máx {remaining}h
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={remaining}
+                    value={serviceConsumedQty}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setServiceConsumedQty(Math.min(remaining, Math.max(0, val)));
+                    }}
+                    className="w-full h-10 px-3 rounded-xl bg-card border border-border/60 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setServiceToUpdate(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:bg-accent"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleUpdateServiceConsumption}
-                  disabled={isUpdatingService}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 shadow-sm"
-                >
-                  {isUpdatingService && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Salvar Consumo</span>
-                </button>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                    Data de consumo
+                  </label>
+                  <input
+                    type="date"
+                    value={serviceConsumedDate}
+                    onChange={(e) => setServiceConsumedDate(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl bg-card border border-border/60 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setServiceToUpdate(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:bg-accent"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleUpdateServiceConsumption}
+                    disabled={isUpdatingService || remaining <= 0}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                  >
+                    {isUpdatingService && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Salvar Consumo</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

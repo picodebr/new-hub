@@ -1,205 +1,199 @@
-import { useMemo, useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Coins, KeyRound, Users as UsersIcon, Sparkles,
-  AlertCircle, Activity, Check, X, Copy, Eye, EyeOff, Gift, Send, Loader2, Plus, Minus
+  ArrowLeft,
+  Coins,
+  KeyRound,
+  Users as UsersIcon,
+  Sparkles,
+  AlertCircle,
+  Plus,
+  Minus,
+  Loader2,
+  Check,
+  X,
+  Target,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  Tooltip,
-} from 'recharts';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { getStudent, redefineStudentPassword } from '@/_base/services/user';
-import { makeDonation } from '@/_base/services/student';
 import { updateStudentData } from '@/_base/services/student/updateStudentData';
+import { formatCoin, removeDuplicateItems } from '@/_base/utils';
+import { IHubUser } from '@/_base/interfaces/user';
+import StudentEvaluationChart from './StudentEvaluationChart';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-export interface StudentProfileData {
-  id: string;
-  name: string;
-  username: string;
-  initials: string;
-  color: string;
-  coins: number;
-  groups: string[];
-  skills?: string[];
-  difficulties?: string[];
-  accessesLastMonth?: number;
-}
-
 interface Props {
-  student?: StudentProfileData;
   onBack?: () => void;
 }
 
-const TARGET_ACCESSES = 20;
-
-export const StudentProfile = ({ student: initialStudent, onBack }: Props) => {
-  const { studentId: routeStudentId } = useParams<{ studentId?: string }>();
+export const StudentProfile = ({ onBack }: Props) => {
+  const { studentId } = useParams<{ studentId?: string }>();
   const navigate = useNavigate();
-  const [student, setStudent] = useState<StudentProfileData | null>(initialStudent || null);
-  const [loading, setLoading] = useState(!initialStudent && !!routeStudentId);
-  const [resetOpen, setResetOpen] = useState(false);
-  const [donationOpen, setDonationOpen] = useState(false);
-  const [donationAmount, setDonationAmount] = useState('5.00');
-  const [coinAdjustment, setCoinAdjustment] = useState('');
-  const [newPassword, setNewPassword] = useState<string | null>(null);
-  const [showPwd, setShowPwd] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [submittingReset, setSubmittingReset] = useState(false);
-  const [submittingDonation, setSubmittingDonation] = useState(false);
-  const [currentCoins, setCurrentCoins] = useState(initialStudent?.coins || 0);
 
-  const targetId = initialStudent?.id || routeStudentId;
+  const [student, setStudent] = useState<IHubUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Coins Modal (+ or -)
+  const [coinModalMode, setCoinModalMode] = useState<'add' | 'remove' | null>(null);
+  const [coinAmount, setCoinAmount] = useState('');
+  const [isUpdatingCoins, setIsUpdatingCoins] = useState(false);
+
+  // Redefine Password Modal
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   useEffect(() => {
-    if (!initialStudent && routeStudentId) {
-      let mounted = true;
-      setLoading(true);
-      getStudent(routeStudentId)
-        .then((s) => {
-          if (mounted && s) {
-            const mapped: StudentProfileData = {
-              id: s.id,
-              name: s.display_name || s.name || 'Aluno',
-              username: `@${s.username || s.id}`,
-              initials: (s.display_name || s.name || 'AL')
-                .split(' ')
-                .map((n: string) => n[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase(),
-              color: 'hsl(var(--primary))',
-              coins: s.metadata?.coins || 0,
-              groups: (s.groups || []).map((g: any) => g.name || 'Grupo'),
-              accessesLastMonth: s.metadata?.accesses || 18,
-            };
-            setStudent(mapped);
-            setCurrentCoins(s.metadata?.coins || 0);
-          }
-        })
-        .catch((err) => {
-          console.warn('Erro ao carregar dados do aluno:', err);
-        })
-        .finally(() => {
-          if (mounted) setLoading(false);
+    if (!studentId) return;
+    let mounted = true;
+    setLoading(true);
+
+    getStudent(studentId)
+      .then((data) => {
+        if (mounted && data) {
+          setStudent(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Erro ao buscar dados do estudante:', err);
+        toast.error('Não foi possível carregar o perfil do aluno.');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [studentId]);
+
+  // Extract skills (score >= 3) and difficulties (score < 3) from student.hub_forms
+  const { skills, difficulties } = useMemo(() => {
+    if (!student?.hub_forms || student.hub_forms.length === 0) {
+      return { skills: [], difficulties: [] };
+    }
+
+    return student.hub_forms.reduce(
+      (acc, form) => {
+        const goodQuestions = (form.questions || []).filter((q) => q.score >= 3).map((e) => e.question_id);
+        const badQuestions = (form.questions || []).filter((q) => q.score < 3).map((e) => e.question_id);
+
+        const formSkills: string[] = [];
+        const formDifficulties: string[] = [];
+
+        form.hub_form_class?.form?.questions?.forEach((q) => {
+          if (goodQuestions.includes(q.id)) formSkills.push(q.title);
+          if (badQuestions.includes(q.id)) formDifficulties.push(q.title);
         });
 
-      return () => {
-        mounted = false;
-      };
+        return {
+          skills: removeDuplicateItems([...acc.skills, ...formSkills]),
+          difficulties: removeDuplicateItems([...acc.difficulties, ...formDifficulties]),
+        };
+      },
+      { skills: [] as string[], difficulties: [] as string[] }
+    );
+  }, [student?.hub_forms]);
+
+  // Handle Coin Credit (+) or Debit (-)
+  const handleUpdateCoins = async () => {
+    if (!student || !coinModalMode) return;
+    const val = Number(coinAmount);
+    if (isNaN(val) || val <= 0) {
+      toast.error('Informe um valor numérico válido maior que zero.');
+      return;
     }
-  }, [initialStudent, routeStudentId]);
+
+    const currentBalance = Number(student.metadata?.coins || 0);
+
+    let newBalance = currentBalance;
+    if (coinModalMode === 'add') {
+      newBalance = currentBalance + val;
+    } else {
+      if (val > currentBalance) {
+        toast.error('O valor a descontar não pode ultrapassar o saldo atual do aluno.');
+        return;
+      }
+      newBalance = Math.max(0, currentBalance - val);
+    }
+
+    setIsUpdatingCoins(true);
+    try {
+      const updated = await updateStudentData(student.id, newBalance);
+      setStudent((prev) => (prev ? { ...prev, ...updated } : prev));
+      toast.success(
+        `Moedas ${coinModalMode === 'add' ? 'creditadas' : 'descontadas'} com sucesso!`
+      );
+      setCoinModalMode(null);
+      setCoinAmount('');
+    } catch (err) {
+      console.error('Erro ao atualizar moedas do aluno:', err);
+      toast.error('Erro ao atualizar saldo de moedas.');
+    } finally {
+      setIsUpdatingCoins(false);
+    }
+  };
+
+  // Handle Redefine Password
+  const handleRedefinePassword = async () => {
+    if (!student) return;
+    if (newPassword.length < 8) {
+      toast.error('A senha deve conter no mínimo 8 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('As senhas não coincidem.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await redefineStudentPassword(student.id, newPassword);
+      toast.success('Senha redefinida com sucesso!');
+      setPasswordModalOpen(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      console.error('Erro ao redefinir senha do aluno:', err);
+      toast.error('Erro ao redefinir senha.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   const handleBack = () => {
     if (onBack) onBack();
     else navigate(-1);
   };
 
-  const accesses = student?.accessesLastMonth ?? Math.floor(Math.random() * 25);
-  const engagement = useMemo(
-    () => Math.min(100, Math.round((accesses / TARGET_ACCESSES) * 100)),
-    [accesses]
-  );
-
-  const engagementLabel =
-    engagement >= 80 ? 'Excelente' :
-    engagement >= 50 ? 'Bom' :
-    engagement >= 25 ? 'Regular' : 'Baixo';
-
-  const engagementColor =
-    engagement >= 80 ? 'hsl(142 71% 45%)' :
-    engagement >= 50 ? 'hsl(199 89% 48%)' :
-    engagement >= 25 ? 'hsl(38 92% 50%)' : 'hsl(0 84% 60%)';
-
-  // BNCC Radar Chart data for this student
-  const bnccData = useMemo(() => [
-    { subject: 'Pensamento Computacional', score: 4.5, fullMark: 5 },
-    { subject: 'Resolução de Problemas', score: 4.0, fullMark: 5 },
-    { subject: 'Trabalho em Equipe', score: 4.8, fullMark: 5 },
-    { subject: 'Cultura Maker & Prototipagem', score: 4.2, fullMark: 5 },
-    { subject: 'Comunicação & Argumentação', score: 3.9, fullMark: 5 },
-  ], []);
-
-  const generatePassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let p = '';
-    for (let i = 0; i < 8; i++) p += chars[Math.floor(Math.random() * chars.length)];
-    return p;
-  };
-
-  const handleReset = async () => {
-    if (!student) return;
-    const generated = generatePassword();
-    setSubmittingReset(true);
-    try {
-      await redefineStudentPassword(student.id, generated);
-      setNewPassword(generated);
-      setShowPwd(true);
-      toast.success('Senha redefinida com sucesso no sistema!');
-    } catch (err) {
-      console.warn('Erro ao salvar no servidor, usando gerador local:', err);
-      setNewPassword(generated);
-      setShowPwd(true);
-      toast.success('Nova senha temporária gerada!');
-    } finally {
-      setSubmittingReset(false);
-    }
-  };
-
-  const copyPassword = async () => {
-    if (!newPassword) return;
-    await navigator.clipboard.writeText(newPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleSendDonation = async () => {
-    if (!student) return;
-    const amount = parseFloat(donationAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Informe um valor válido maior que zero.');
-      return;
-    }
-
-    setSubmittingDonation(true);
-    try {
-      await makeDonation(student.id, amount);
-      setCurrentCoins((c) => c + amount);
-      toast.success(`Doação de R$ ${amount.toFixed(2).replace('.', ',')} realizada com sucesso!`);
-      setDonationOpen(false);
-    } catch (err) {
-      console.warn('Erro ao enviar doação remota:', err);
-      setCurrentCoins((c) => c + amount);
-      toast.success(`Bônus de R$ ${amount.toFixed(2).replace('.', ',')} creditado na carteira!`);
-      setDonationOpen(false);
-    } finally {
-      setSubmittingDonation(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
-        <p className="text-sm text-muted-foreground font-medium">Carregando perfil do aluno...</p>
+        <p className="text-sm text-muted-foreground font-semibold">Carregando dados do aluno...</p>
       </div>
     );
   }
 
   if (!student) {
     return (
-      <div className="glass-card p-12 text-center space-y-4">
-        <p className="text-muted-foreground font-medium">Aluno não encontrado.</p>
+      <div className="glass-card p-12 text-center rounded-2xl border border-border bg-card space-y-4">
+        <p className="text-muted-foreground font-semibold">Aluno não encontrado.</p>
         <button
           onClick={handleBack}
-          className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
+          className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-md hover:brightness-105"
         >
           Voltar
         </button>
@@ -207,387 +201,365 @@ export const StudentProfile = ({ student: initialStudent, onBack }: Props) => {
     );
   }
 
-  // Engagement ring math
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (engagement / 100) * circumference;
-
-  const skills = student.skills ?? ['Lógica de Programação', 'Circuitos Básicos', 'Colaboração'];
-  const difficulties = student.difficulties ?? ['Depuração de Código C++'];
+  const currentCoins = Number(student.metadata?.coins || 0);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -16 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="space-y-6"
+      exit={{ opacity: 0, y: -15 }}
+      className="space-y-6 pb-12"
     >
-      {/* Back */}
-      <div className="flex items-center gap-3">
-        <button onClick={handleBack} className="p-2 rounded-xl hover:bg-accent transition-colors">
-          <ArrowLeft className="w-5 h-5 text-foreground" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Perfil do Aluno
-          </h1>
-          <p className="text-sm text-muted-foreground">Acompanhe progresso, saldo, competências BNCC e engajamento</p>
-        </div>
-      </div>
-
-      {/* Hero card */}
-      <div className="glass-card p-6 md:p-8 relative overflow-hidden">
-        <div
-          className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-20 blur-3xl"
-          style={{ backgroundColor: student.color }}
-        />
-        <div className="relative flex flex-col md:flex-row md:items-center gap-6">
-          {/* Avatar */}
-          <div
-            className="w-24 h-24 md:w-28 md:h-28 rounded-full flex items-center justify-center text-3xl font-bold text-white shrink-0 ring-4 ring-background shadow-xl"
-            style={{ backgroundColor: student.color }}
+      {/* Top Header Card */}
+      <div className="p-6 rounded-2xl border border-border/70 bg-card shadow-sm space-y-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="p-2.5 rounded-xl border border-border/70 bg-card hover:bg-accent text-foreground transition-colors"
+            title="Voltar"
           >
-            {student.initials}
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-              {student.name}
-            </h2>
-            <p className="text-sm text-muted-foreground">{student.username}</p>
-
-            <div className="flex flex-wrap items-center gap-3 mt-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">
-                <Coins className="w-4 h-4" />
-                <span className="text-sm font-bold">
-                  R$ {currentCoins.toFixed(2).replace('.', ',')}
-                </span>
-              </div>
-              <button
-                onClick={() => setDonationOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm font-semibold transition-colors"
-              >
-                <Gift className="w-4 h-4" />
-                Doar Moedas
-              </button>
-              <button
-                onClick={() => setResetOpen(true)}
-                data-tour="reset-password-btn"
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-sm font-semibold transition-colors"
-              >
-                <KeyRound className="w-4 h-4" />
-                Resetar Senha
-              </button>
-            </div>
-          </div>
-
-          {/* Engagement ring */}
-          <div className="flex flex-col items-center gap-2 shrink-0">
-            <div className="relative w-32 h-32">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-                <circle
-                  cx="60" cy="60" r={radius}
-                  fill="none"
-                  stroke="hsl(var(--muted))"
-                  strokeWidth="8"
-                  className="opacity-40"
-                />
-                <motion.circle
-                  cx="60" cy="60" r={radius}
-                  fill="none"
-                  stroke={engagementColor}
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  initial={{ strokeDashoffset: circumference }}
-                  animate={{ strokeDashoffset: offset }}
-                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <Activity className="w-3.5 h-3.5 mb-0.5" style={{ color: engagementColor }} />
-                <span className="text-2xl font-bold text-foreground tabular-nums">{engagement}%</span>
-                <span className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: engagementColor }}>
-                  {engagementLabel}
-                </span>
-              </div>
-            </div>
-            <p className="text-[11px] text-muted-foreground text-center max-w-[140px]">
-              {accesses} acessos no último mês
-            </p>
-          </div>
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Perfil do Aluno
+          </span>
         </div>
-      </div>
 
-      {/* BNCC Radar Chart Section */}
-      <div className="glass-card p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-              <Sparkles className="w-4.5 h-4.5 text-indigo-500" />
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          {/* Avatar and Info */}
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-primary/20 text-primary font-bold text-xl flex items-center justify-center border-2 border-primary/30 shadow-md">
+              {student.avatar ? (
+                <img
+                  src={student.avatar}
+                  alt={student.name}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                (student.name || 'AL').slice(0, 2).toUpperCase()
+              )}
             </div>
+
             <div>
-              <h3 className="text-base font-semibold text-foreground">Competências & Habilidades BNCC</h3>
-              <p className="text-xs text-muted-foreground">Desempenho avaliado em projetos e desafios práticos</p>
+              <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+                {student.name}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                @{student.username || student.id} • {student.email || 'Email não cadastrado'}
+              </p>
             </div>
           </div>
-        </div>
 
-        <div className="h-[280px] w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={bnccData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-              <PolarGrid stroke="hsl(var(--border))" strokeDasharray="3 3" opacity={0.6} />
-              <PolarAngleAxis
-                dataKey="subject"
-                tick={{ fill: 'hsl(var(--foreground))', fontSize: 11, fontWeight: 500 }}
-              />
-              <PolarRadiusAxis domain={[0, 5]} stroke="hsl(var(--muted-foreground))" opacity={0.4} />
-              <Radar
-                name="Nota do Aluno"
-                dataKey="score"
-                stroke="hsl(var(--primary))"
-                fill="hsl(var(--primary))"
-                fillOpacity={0.35}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="glass-card p-2 text-xs border border-border shadow-md">
-                        <p className="font-bold text-foreground">{data.subject}</p>
-                        <p className="text-primary font-semibold">Nota: {data.score} / 5.0</p>
-                      </div>
-                    );
-                  }
-                  return null;
+          {/* Balance & Actions */}
+          <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+            {/* Coins Balance with + and - buttons */}
+            <div className="flex items-center gap-2 p-2 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+              <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-extrabold text-base px-2">
+                <Coins className="w-5 h-5" />
+                <span>{formatCoin(currentCoins)}</span>
+              </div>
+
+              {/* + Button */}
+              <button
+                type="button"
+                title="Creditar moedas"
+                onClick={() => {
+                  setCoinModalMode('add');
+                  setCoinAmount('');
                 }}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
+                className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 transition-all"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+              </button>
+
+              {/* - Button */}
+              <button
+                type="button"
+                title="Descontar moedas"
+                disabled={currentCoins <= 0}
+                onClick={() => {
+                  setCoinModalMode('remove');
+                  setCoinAmount('');
+                }}
+                className="w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Minus className="w-4 h-4 stroke-[3]" />
+              </button>
+            </div>
+
+            {/* Redefine Password Button */}
+            <button
+              type="button"
+              onClick={() => setPasswordModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border/80 bg-card hover:bg-accent text-foreground text-xs font-bold transition-all shadow-sm"
+            >
+              <KeyRound className="w-4 h-4 text-primary" />
+              <span>Resetar Senha</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Cards grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Grupos */}
-        <div className="glass-card p-6 space-y-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <UsersIcon className="w-[18px] h-[18px] text-primary" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column (1 col): Grupos, Habilidades e Dificuldades */}
+        <div className="space-y-6">
+          {/* Card: Grupos */}
+          <div className="p-5 rounded-2xl border border-border/70 bg-card shadow-sm space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                <UsersIcon className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-foreground text-base">Grupos do Aluno</h3>
             </div>
-            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Grupos da Turma</h3>
-          </div>
-          {student.groups.length === 0 ? (
-            <EmptyCard icon={UsersIcon} text="Nenhum grupo vinculado" />
-          ) : (
+
             <div className="space-y-2">
-              {student.groups.map((g) => (
-                <div
-                  key={g}
-                  className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border/40 bg-card/60 px-3 py-2.5 transition-all duration-300 hover:border-border hover:bg-card"
+              {(student.groups || []).map((group) => (
+                <Link
+                  key={group.id}
+                  to={`/groups/${group.id}`}
+                  className="p-3 rounded-xl border border-border/60 bg-muted/10 hover:border-primary hover:bg-accent/30 transition-all flex items-center justify-between group block"
                 >
-                  <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary opacity-60" />
-                  <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-                    <UsersIcon className="w-4 h-4 text-primary" />
-                  </div>
-                  <span className="text-sm font-medium text-foreground tracking-tight truncate">{g}</span>
-                </div>
+                  <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                    {group.display_name}
+                  </span>
+                  <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+                    Ver Grupo →
+                  </span>
+                </Link>
               ))}
-            </div>
-          )}
-        </div>
 
-        {/* Habilidades */}
-        <div className="glass-card p-6 space-y-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-              <Sparkles className="w-[18px] h-[18px] text-emerald-500" />
+              {(student.groups || []).length === 0 && (
+                <p className="text-xs text-muted-foreground italic text-center py-6">
+                  Aluno não participa de nenhum grupo ativo.
+                </p>
+              )}
             </div>
-            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Habilidades em Destaque</h3>
           </div>
-          {skills.length === 0 ? (
-            <EmptyCard icon={Sparkles} text="Nenhuma habilidade mapeada" />
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {skills.map((s) => (
+
+          {/* Card: Habilidades (score >= 3) */}
+          <div className="p-5 rounded-2xl border border-border/70 bg-card shadow-sm space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground text-base">Habilidades em Destaque</h3>
+                <p className="text-[11px] text-muted-foreground">Critérios com nota 3 ou superior</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {skills.map((skill) => (
                 <span
-                  key={s}
-                  className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold tracking-tight"
+                  key={skill}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {s}
+                  {skill}
                 </span>
               ))}
-            </div>
-          )}
-        </div>
 
-        {/* Dificuldades */}
-        <div className="glass-card p-6 space-y-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 flex items-center justify-center">
-              <AlertCircle className="w-[18px] h-[18px] text-rose-500" />
+              {skills.length === 0 && (
+                <p className="text-xs text-muted-foreground italic py-4">
+                  Nenhuma habilidade avaliada com nota satisfatória ainda.
+                </p>
+              )}
             </div>
-            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Pontos de Atenção</h3>
           </div>
-          {difficulties.length === 0 ? (
-            <EmptyCard icon={AlertCircle} text="Nenhuma dificuldade reportada" />
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {difficulties.map((d) => (
+
+          {/* Card: Dificuldades (score < 3) */}
+          <div className="p-5 rounded-2xl border border-border/70 bg-card shadow-sm space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-500">
+                <TrendingDown className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground text-base">Pontos de Atenção</h3>
+                <p className="text-[11px] text-muted-foreground">Critérios com nota inferior a 3</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {difficulties.map((diff) => (
                 <span
-                  key={d}
-                  className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-md border border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold tracking-tight"
+                  key={diff}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-bold"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  {d}
+                  {diff}
                 </span>
               ))}
+
+              {difficulties.length === 0 && (
+                <p className="text-xs text-muted-foreground italic py-4">
+                  Nenhum ponto de atenção crítico registrado.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column (2 cols): Gráfico de Avaliação do Aluno */}
+        <div className="lg:col-span-2">
+          {student.hub_forms && student.hub_forms.length > 0 ? (
+            <StudentEvaluationChart forms={student.hub_forms} />
+          ) : (
+            <div className="p-12 rounded-2xl border border-border/70 bg-card shadow-sm text-center flex flex-col items-center justify-center min-h-[400px]">
+              <div className="w-12 h-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground mb-3">
+                <Target className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-foreground">Sem histórico de avaliações</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Assim que o professor registrar avaliações quinzenais para este aluno, o gráfico de evolução por habilidade aparecerá aqui.
+              </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Doar Moedas Modal */}
-      <Dialog open={donationOpen} onOpenChange={setDonationOpen}>
-        <DialogContent className="max-w-md">
-          <DialogTitle className="flex items-center gap-2">
-            <Gift className="w-5 h-5 text-emerald-500" />
-            Doar / Bonificar Moedas
-          </DialogTitle>
-          <DialogDescription>
-            Conceda créditos ou moedas PiCode diretamente para a carteira de {student.name}.
-          </DialogDescription>
+      {/* MODAL CONTROLE DE MOEDAS (+ ou -) */}
+      <Dialog open={!!coinModalMode} onOpenChange={(open) => !open && setCoinModalMode(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  coinModalMode === 'add'
+                    ? 'bg-emerald-500/10 text-emerald-600'
+                    : 'bg-rose-500/10 text-rose-600'
+                }`}
+              >
+                <Coins className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle>
+                  {coinModalMode === 'add' ? 'Creditar Moedas' : 'Descontar Moedas'}
+                </DialogTitle>
+                <DialogDescription>
+                  Saldo atual: {formatCoin(currentCoins)}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
 
-          <div className="space-y-4 pt-3">
-            <div>
-              <label className="text-xs font-semibold text-foreground">Valor (R$)</label>
-              <input
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">
+                Quantidade de Moedas ({coinModalMode === 'add' ? 'a adicionar' : 'a subtrair'})
+              </label>
+              <Input
                 type="number"
-                step="0.50"
-                min="0.50"
-                value={donationAmount}
-                onChange={(e) => setDonationAmount(e.target.value)}
-                className="mt-1.5 w-full rounded-xl bg-card border border-border px-3.5 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                min="0.01"
+                step="0.01"
+                autoFocus
+                placeholder="Ex: 10.00"
+                value={coinAmount}
+                onChange={(e) => setCoinAmount(e.target.value)}
+                className="h-11 rounded-xl text-base font-bold"
               />
             </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setDonationOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={submittingDonation}
-                onClick={handleSendDonation}
-                className="apple-btn flex items-center gap-2 text-xs py-2 px-4"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{submittingDonation ? 'Creditando...' : 'Confirmar Transferência'}</span>
-              </button>
-            </div>
           </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              disabled={isUpdatingCoins}
+              onClick={() => setCoinModalMode(null)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-accent"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!coinAmount || isUpdatingCoins}
+              onClick={handleUpdateCoins}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-sm shadow-md transition-all ${
+                coinModalMode === 'add'
+                  ? 'bg-emerald-600 hover:brightness-105'
+                  : 'bg-rose-600 hover:brightness-105'
+              }`}
+            >
+              {isUpdatingCoins ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Atualizando...</span>
+                </>
+              ) : (
+                <span>Confirmar</span>
+              )}
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reset password modal */}
-      <Dialog
-        open={resetOpen}
-        onOpenChange={(o) => {
-          setResetOpen(o);
-          if (!o) { setNewPassword(null); setShowPwd(false); }
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-primary" />
-            Resetar senha do aluno
-          </DialogTitle>
-          <DialogDescription>
-            {!newPassword
-              ? `Tem certeza que deseja redefinir e gerar uma nova senha para ${student.name}?`
-              : 'Senha gerada com sucesso. Compartilhe com o aluno.'}
-          </DialogDescription>
+      {/* MODAL RESETAR SENHA */}
+      <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle>Resetar Senha do Aluno</DialogTitle>
+                <DialogDescription>
+                  Defina uma nova senha de acesso para {student.name}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
 
-          <AnimatePresence mode="wait">
-            {!newPassword ? (
-              <motion.div
-                key="confirm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex justify-end gap-2 pt-2"
-              >
-                <button
-                  onClick={() => setResetOpen(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  disabled={submittingReset}
-                  onClick={handleReset}
-                  className="apple-btn text-xs py-2 px-4"
-                >
-                  {submittingReset ? 'Gerando...' : 'Confirmar e Gerar'}
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="password"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="space-y-3 pt-2"
-              >
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-accent/40 border border-border/50">
-                  <code className="flex-1 text-lg font-mono font-bold text-foreground tracking-widest">
-                    {showPwd ? newPassword : '•'.repeat(newPassword.length)}
-                  </code>
-                  <button
-                    onClick={() => setShowPwd((s) => !s)}
-                    className="p-2 rounded-lg hover:bg-accent transition-colors"
-                    aria-label="Mostrar/ocultar"
-                  >
-                    {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={copyPassword}
-                    className="p-2 rounded-lg hover:bg-accent transition-colors"
-                    aria-label="Copiar"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-                <button
-                  onClick={() => setResetOpen(false)}
-                  className="w-full apple-btn py-2.5"
-                >
-                  Concluir
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Nova Senha (mínimo 8 caracteres)</label>
+              <Input
+                type="password"
+                placeholder="Digite a nova senha"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="h-10 rounded-xl text-sm font-medium"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Confirmar Nova Senha</label>
+              <Input
+                type="password"
+                placeholder="Repita a nova senha"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="h-10 rounded-xl text-sm font-medium"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              disabled={isUpdatingPassword}
+              onClick={() => setPasswordModalOpen(false)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-accent"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={newPassword.length < 8 || newPassword !== confirmPassword || isUpdatingPassword}
+              onClick={handleRedefinePassword}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm shadow-md hover:brightness-105 transition-all disabled:opacity-50"
+            >
+              {isUpdatingPassword ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Salvando...</span>
+                </>
+              ) : (
+                <span>Atualizar Senha</span>
+              )}
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.div>
   );
 };
-
-const EmptyCard = ({ icon: Icon, text }: { icon: React.ElementType; text: string }) => (
-  <div className="flex flex-col items-center justify-center text-center py-8 rounded-xl bg-accent/20">
-    <div className="w-10 h-10 rounded-full bg-muted/40 flex items-center justify-center mb-2.5">
-      <Icon className="w-4 h-4 text-muted-foreground/60" />
-    </div>
-    <p className="text-xs text-muted-foreground">{text}</p>
-  </div>
-);
 
 export default StudentProfile;

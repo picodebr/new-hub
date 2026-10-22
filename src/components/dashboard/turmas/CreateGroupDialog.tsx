@@ -19,8 +19,8 @@ export interface GroupMember {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  availableStudents: Student[];
-  onCreate: (group: { name: string; members: GroupMember[] }) => void;
+  availableStudents: any[];
+  onCreate: (group: { name: string; members: GroupMember[]; users: string[] }) => void;
 }
 
 const ROLE_OPTIONS: { value: Exclude<GroupRole, null>; label: string; shortLabel: string; icon: typeof Crown; color: string; max: number }[] = [
@@ -90,7 +90,14 @@ const CreateGroupDialog = ({ open, onOpenChange, availableStudents, onCreate }: 
   };
 
   const allHaveRoles = members.length > 0 && members.every(m => m.role !== null);
-  const canCreate = name.trim().length > 0 && members.length >= MIN_MEMBERS && allHaveRoles;
+  const hasRequiredRoles =
+    roleCounts.lider === 1 && roleCounts.gestor === 1 && roleCounts.social === 1 && roleCounts.construtor <= 5;
+  const canCreate =
+    name.trim().length > 0 &&
+    members.length >= MIN_MEMBERS &&
+    members.length <= MAX_MEMBERS &&
+    allHaveRoles &&
+    hasRequiredRoles;
 
   const progressPct = Math.min((members.length / RECOMMENDED) * 100, 100);
   const counterColor =
@@ -101,7 +108,11 @@ const CreateGroupDialog = ({ open, onOpenChange, availableStudents, onCreate }: 
 
   const handleCreate = () => {
     if (!canCreate) return;
-    onCreate({ name: name.trim(), members });
+    onCreate({
+      name: name.trim(),
+      members,
+      users: members.map(m => m.student.id),
+    } as any);
     reset();
     onOpenChange(false);
   };

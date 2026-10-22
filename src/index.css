@@ -115,15 +115,23 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  html, body, #root {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif !important;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
   a {
     text-decoration: none;
     color: inherit;
+  }
+  .blocklyText,
+  .blocklyToolboxCategoryLabel,
+  .blocklyFlyoutLabelText,
+  .blocklyHtmlInput {
+    font-family: var(--font-outfit), sans-serif !important;
   }
 }
 

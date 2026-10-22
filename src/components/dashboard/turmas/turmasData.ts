@@ -17,15 +17,19 @@ export interface Project {
   teacherName?: string;
   teacherInitials?: string;
   hasCover: boolean;
+  educator?: { id?: string; name: string; email?: string; avatar?: string } | null;
 }
 
 export interface Turma {
   id: string;
   name: string;
   code?: string;
+  grade?: string;
+  color?: string;
   studentCount: number;
   students: Student[];
   projects: Project[];
+  raw?: any;
 }
 
 export const availableTurmas: Turma[] = [
