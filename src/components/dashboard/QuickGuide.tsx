@@ -7,10 +7,10 @@ import type { TourKey } from '@/lib/tour/tourSteps';
 const faqs: { q: string; a: string; tour: TourKey }[] = [
   { q: 'Como navegar pela plataforma?', a: 'Use o menu lateral para acessar as seções: Cursos, Turmas, Meus Códigos, Estoque, Biblioteca e Comunidade.', tour: 'navigation' },
   { q: 'Como abrir o livro na plataforma?', a: 'Acesse a Biblioteca, selecione o material desejado e clique para abrir o leitor de PDF.', tour: 'open-book' },
-  { q: 'Como criar um novo projeto?', a: 'Vá em Meus Códigos, abra uma pasta e clique em "Novo Projeto".', tour: 'new-project' },
+  { q: 'Como criar um novo projeto?', a: 'Para criar um novo projeto, entre em \'Turmas\', selecione a turma, navegue até a aba \'Projetos\' e clique em \'Novo Projeto\'. Você pode usar nossa IA para mapear tudo rapidamente.', tour: 'new-project' },
   { q: 'Como acessar minhas turmas?', a: 'Clique em "Turmas" no menu lateral para ver suas turmas e alunos.', tour: 'access-classes' },
-  { q: 'O que fazer se meu aluno esquecer a senha?', a: 'Oriente o aluno a usar a recuperação por e-mail ou username na tela de login.', tour: 'student-password' },
-  { q: 'Como pedir um novo produto na loja?', a: 'Acesse o Estoque Maker e utilize a aba de Solicitações de Revenda.', tour: 'request-product' },
+  { q: 'O que fazer se meu aluno esquecer a senha?', a: 'Acesse \'Turmas\' > Selecione a Turma > Aba \'Alunos\' > Clique no aluno > Clique no botão \'Resetar Senha\'.', tour: 'student-password' },
+  { q: 'Como pedir um novo produto na loja?', a: 'Os alunos compram no ambiente do projeto (Meus Grupos > Loja Online). Você deve aprovar o pedido deles pelo Hub, na seção \'Estoque Maker\', aba \'Pedidos\'.', tour: 'request-product' },
 ];
 
 const QuickGuide = () => {

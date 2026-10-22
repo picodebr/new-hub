@@ -196,6 +196,7 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
   };
 
   const handleNotificationClick = async (notif: UINotification) => {
+    setShowNotifications(false);
     if (!notif.read) {
       setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
       try {
@@ -205,6 +206,28 @@ const DashboardNavbar = ({ onToggleSidebar, isDark, onToggleTheme }: Props) => {
       } catch (err) {
         console.warn('Erro ao marcar notificação:', err);
       }
+    }
+
+    const raw: any = notif.raw || {};
+    const targetType = String(raw.target_type || '').toLowerCase();
+    const isStockAlert = notif.id.startsWith('stock-') || targetType === 'stock';
+
+    if (isStockAlert) {
+      navigate('/stock');
+    } else if (targetType === 'course') {
+      navigate(`/courses/${raw.redirect_id || ''}`);
+    } else if (targetType === 'post') {
+      navigate('/community');
+    } else if (targetType === 'book') {
+      navigate(`/library?id=${raw.redirect_id || ''}`);
+    } else if (targetType === 'planner') {
+      navigate(`/planner?id=${raw.redirect_id || ''}`);
+    } else if (targetType === 'group') {
+      navigate(`/groups/${raw.redirect_id || ''}`);
+    } else if (targetType === 'project') {
+      navigate(`/projects/${raw.redirect_id || ''}`);
+    } else if (targetType === 'class') {
+      navigate(`/classes/${raw.redirect_id || ''}`);
     }
   };
 

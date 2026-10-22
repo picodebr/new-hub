@@ -11,6 +11,7 @@ import {
   Wrench,
   GraduationCap,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -62,7 +63,14 @@ const FAQ_GUIDES: GuideType[] = [
 export const SupportAppointmentsView: React.FC = () => {
   const [step, setStep] = useState<StepType>('FAQ');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [faqSearch, setFaqSearch] = useState('');
   const navigate = useNavigate();
+
+  const filteredFaqs = FAQ_GUIDES.filter(
+    (item) =>
+      item.label.toLowerCase().includes(faqSearch.toLowerCase()) ||
+      item.instructions.toLowerCase().includes(faqSearch.toLowerCase())
+  );
 
   useEffect(() => {
     if (step === 'TECH_CALENDAR' || step === 'PEDAGO_CALENDAR') {
@@ -165,48 +173,67 @@ export const SupportAppointmentsView: React.FC = () => {
 
             {/* FAQ Accordion */}
             <div className="glass-card !rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <HelpCircle className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-bold text-foreground">Perguntas Frequentes (FAQ)</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-bold text-foreground">Perguntas Frequentes (FAQ)</h2>
+                </div>
+
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={faqSearch}
+                    onChange={(e) => setFaqSearch(e.target.value)}
+                    placeholder="Buscar pergunta ou palavra-chave..."
+                    className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-border/50 bg-accent/30 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </div>
               </div>
 
-              <div className="divide-y divide-border/40">
-                {FAQ_GUIDES.map((item, idx) => {
-                  const isOpen = expandedFaq === idx;
-                  return (
-                    <div key={idx} className="py-4">
-                      <button
-                        onClick={() => setExpandedFaq(isOpen ? null : idx)}
-                        className="w-full flex items-center justify-between text-left gap-4 group"
-                      >
-                        <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                          {item.label}
-                        </span>
-                        <ChevronDown
-                          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                            isOpen ? 'rotate-180 text-primary' : ''
-                          }`}
-                        />
-                      </button>
-                      <AnimatePresence>
-                        {isOpen && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed bg-accent/20 p-3.5 rounded-xl">
-                              {item.instructions}
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
-              </div>
+              {filteredFaqs.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic py-6 text-center">
+                  Nenhuma pergunta encontrada para "{faqSearch}".
+                </p>
+              ) : (
+                <div className="divide-y divide-border/40">
+                  {filteredFaqs.map((item, idx) => {
+                    const isOpen = expandedFaq === idx;
+                    return (
+                      <div key={idx} className="py-4">
+                        <button
+                          onClick={() => setExpandedFaq(isOpen ? null : idx)}
+                          className="w-full flex items-center justify-between text-left gap-4 group"
+                        >
+                          <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                            {item.label}
+                          </span>
+                          <ChevronDown
+                            className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                              isOpen ? 'rotate-180 text-primary' : ''
+                            }`}
+                          />
+                        </button>
+                        <AnimatePresence>
+                          {isOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed bg-accent/20 p-3.5 rounded-xl">
+                                {item.instructions}
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Operating Hours Info */}

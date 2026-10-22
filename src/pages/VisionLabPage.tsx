@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 export default function VisionLabPage() {
   const { folderId, projectId } = useParams<{ folderId: string; projectId: string }>();
   const navigate = useNavigate();
-  const { projectName, setProjectName, classes } = useVisionLabStore();
+  const { projectName, setProjectName, classes, initFromProject } = useVisionLabStore();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -22,9 +22,12 @@ export default function VisionLabPage() {
 
     let mounted = true;
     getVisionLabProject(projectId)
-      .then((data) => {
+      .then((data: any) => {
         if (mounted && data) {
           setProjectName(data.name || 'Meu Modelo de Visão');
+          if (Array.isArray(data.labels) && data.labels.length > 0) {
+            initFromProject(data.labels);
+          }
         }
       })
       .catch((err) => {
@@ -34,7 +37,7 @@ export default function VisionLabPage() {
     return () => {
       mounted = false;
     };
-  }, [projectId, setProjectName]);
+  }, [projectId, setProjectName, initFromProject]);
 
   const handleSaveProject = async () => {
     if (!projectId) return;
@@ -43,7 +46,8 @@ export default function VisionLabPage() {
       await updateVisionLabProject({
         id: projectId,
         name: projectName,
-      } as any);
+        labels: classes.map((c) => c.name),
+      });
       toast.success('Projeto salvo com sucesso!');
     } catch (err) {
       console.warn('Erro ao salvar projeto no servidor:', err);
@@ -60,7 +64,7 @@ export default function VisionLabPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(folderId ? `/vision-lab/${folderId}` : '/vision-lab')}
             className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-accent text-foreground transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

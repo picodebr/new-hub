@@ -19,12 +19,17 @@ import { Lesson, Module, Course } from './coursesData';
 import { sendModuleLesson } from '@/_base/services/course';
 import { toast } from 'sonner';
 
+import { IHubChallenge } from '@/_base/interfaces/challenges';
+import { ISendMazeParams } from '@/_base/interfaces/challenges/IMazeChallenge';
+
 interface Props {
   course: Course;
   module: Module;
   lesson: Lesson;
+  challenge?: IHubChallenge;
   onBack: () => void;
   onMarkWatched: (lessonId: string) => void;
+  onAnswer?: (answer: ISendMazeParams & { attempts?: number }) => void;
 }
 
 type Direction = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';
@@ -41,24 +46,31 @@ interface Coordinate {
   y: number;
 }
 
-export const MazeLesson = ({ course, module, lesson, onBack, onMarkWatched }: Props) => {
+export const MazeLesson = ({ course, module, lesson, challenge, onBack, onMarkWatched, onAnswer }: Props) => {
+  const challengeId = challenge?.id || lesson.challenge_data?.id || lesson.id;
+
   // Extract or fallback maze data
-  const mazeConfig = (lesson.challenge_data?.data as any) || {
-    size: 6,
-    start: { x: 0, y: 0 },
-    finish: { x: 4, y: 3 },
-    path: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
-      { x: 2, y: 1 },
-      { x: 2, y: 2 },
-      { x: 3, y: 2 },
-      { x: 4, y: 2 },
-      { x: 4, y: 3 },
-    ],
-    player: 'car',
-  };
+  const mazeConfig =
+    challenge?.data?.maze_field ||
+    (lesson.challenge_data?.data as any)?.maze_field ||
+    (lesson as any).data?.maze_field || {
+      size: 6,
+      start: { x: 0, y: 0 },
+      finish: { x: 4, y: 3 },
+      path: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 2, y: 0 },
+        { x: 2, y: 1 },
+        { x: 2, y: 2 },
+        { x: 3, y: 2 },
+        { x: 4, y: 2 },
+        { x: 4, y: 3 },
+      ],
+      player: 'car',
+    };
+
+  const playerName = mazeConfig.player || 'car';
 
   const gridSize = mazeConfig.size || 6;
   const startPos: Coordinate = mazeConfig.start || { x: 0, y: 0 };
@@ -175,19 +187,24 @@ export const MazeLesson = ({ course, module, lesson, onBack, onMarkWatched }: Pr
     if (curX === finishPos.x && curY === finishPos.y) {
       setIsCompleted(true);
       toast.success('Parabéns! O robô alcançou o destino com sucesso!');
+
+      const answerPayload: ISendMazeParams & { attempts?: number } = {
+        hub_challenge_id: challengeId,
+        is_passed: true,
+        attempts: Math.max(1, 4 - lives),
+      };
+
+      if (onAnswer) {
+        onAnswer(answerPayload);
+      }
+
       setSubmitting(true);
       try {
         await sendModuleLesson({
           course_id: course.id,
           module_id: module.id,
           lesson_id: lesson.id,
-          answers: [
-            {
-              hub_challenge_id: lesson.id,
-              isCorrect: true,
-              commands: commands.map((c) => c.type),
-            } as any,
-          ],
+          answers: [answerPayload],
         });
       } catch (err) {
         console.warn('Erro ao sincronizar envio do labirinto:', err);
@@ -301,9 +318,17 @@ export const MazeLesson = ({ course, module, lesson, onBack, onMarkWatched }: Pr
                         <motion.div
                           animate={{ rotate: playerAngle }}
                           transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                          className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg border-2 border-white dark:border-zinc-900 z-10"
+                          className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg border-2 border-white dark:border-zinc-900 z-10 overflow-hidden"
                         >
-                          <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                          <img
+                            src={`/challenges/icons/${playerName}.svg`}
+                            alt={playerName}
+                            className="w-5 h-5 object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <ArrowUp className="w-4 h-4 stroke-[2.5]" style={{ display: 'none' }} />
                         </motion.div>
                       )}
                     </div>

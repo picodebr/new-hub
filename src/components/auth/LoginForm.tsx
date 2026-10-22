@@ -9,9 +9,10 @@ import AuthLogo from './AuthLogo';
 interface LoginFormProps {
   onSignUp: () => void;
   onForgotPassword: () => void;
+  onSupport?: () => void;
 }
 
-const LoginForm = ({ onSignUp, onForgotPassword }: LoginFormProps) => {
+const LoginForm = ({ onSignUp, onForgotPassword, onSupport }: LoginFormProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,22 +43,6 @@ const LoginForm = ({ onSignUp, onForgotPassword }: LoginFormProps) => {
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Erro ao realizar login. Verifique suas credenciais.';
       toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const quickLogin = async (identifier: string) => {
-    setEmail(identifier);
-    setLoading(true);
-    try {
-      const loggedUser = await login(identifier);
-      if (loggedUser) {
-        toast.success(`Entrando como ${loggedUser.name}...`);
-        navigate('/dashboard');
-      }
-    } catch (err: any) {
-      toast.error('Erro ao acessar com conta demo');
     } finally {
       setLoading(false);
     }
@@ -140,30 +125,17 @@ const LoginForm = ({ onSignUp, onForgotPassword }: LoginFormProps) => {
         </button>
       </form>
 
-      {/* Dev: quick role login */}
-      <div className="mt-5 pt-4 border-t border-border/60">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground/80 text-center mb-2 font-semibold">
-          Acesso rápido (dev)
-        </p>
-        <div className="grid grid-cols-2 gap-2">
+      {onSupport && (
+        <div className="mt-6 pt-4 border-t border-border/60 text-center">
           <button
             type="button"
-            onClick={() => quickLogin('prof@picode')}
-            disabled={loading}
-            className="text-xs font-medium px-3 py-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+            onClick={onSupport}
+            className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
           >
-            Entrar como Professor
-          </button>
-          <button
-            type="button"
-            onClick={() => quickLogin('aluno@picode')}
-            disabled={loading}
-            className="text-xs font-medium px-3 py-2 rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-          >
-            Entrar como Aluno
+            Não está conseguindo acessar? <span className="font-semibold underline">Suporte PiCode</span>
           </button>
         </div>
-      </div>
+      )}
     </motion.div>
   );
 };

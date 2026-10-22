@@ -24,6 +24,8 @@ import { useStudentAvatar } from '@/hooks/useStudentAvatar';
 import { AvatarPreview } from '@/components/dashboard/student/AvatarCustomizer';
 import { formatCoin } from '@/_base/utils';
 
+import { useSelectedSchool } from '@/hooks/useSelectedSchool';
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -64,14 +66,20 @@ const studentNav: NavItem[] = [
 
 const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
   const isMobile = useIsMobile();
-  const { user, chosenSchool } = useUser();
+  const { user, isMaster } = useUser();
+  const { school, schools, schoolGroups, selectedSchoolGroup, changeSchool, changeSchoolGroup } = useSelectedSchool();
   const { avatar } = useStudentAvatar();
   const navItems = user?.role === 'student' ? studentNav : teacherNav;
   const isStudent = user?.role === 'student';
 
-  const userCoins = user?.metadata?.coins ?? (isStudent ? 14874.14 : 0);
-  const userStreak = user?.metadata?.streak ?? 7;
-  const schoolName = chosenSchool?.display_name || user?.school_group?.display_name || 'Escola PiCode';
+  const userCoins = Number(user?.metadata?.coins ?? 0);
+  const userStreak =
+    user?.metadata?.streak != null
+      ? Number(user.metadata.streak)
+      : user?.metadata?.first_access
+      ? Math.max(0, Math.floor((Date.now() - new Date(user.metadata.first_access).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
+  const schoolName = school?.display_name || user?.school_group?.display_name || 'Escola PiCode';
 
   return (
     <AnimatePresence>
@@ -130,6 +138,39 @@ const DashboardSidebar = ({ open, onClose, activeNav, onNavChange }: Props) => {
                     </p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {!isStudent && (
+              <div className="mt-3 space-y-2 md:hidden">
+                {isMaster && schoolGroups.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase">Rede</label>
+                    <select
+                      value={selectedSchoolGroup?.id || ''}
+                      onChange={(e) => changeSchoolGroup(e.target.value)}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-xl border border-border/60 bg-accent/30 text-foreground"
+                    >
+                      {schoolGroups.map((g) => (
+                        <option key={g.id} value={g.id}>{g.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {schools.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase">Escola Ativa</label>
+                    <select
+                      value={school?.hub_school_id || ''}
+                      onChange={(e) => changeSchool(e.target.value)}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-xl border border-border/60 bg-accent/30 text-foreground"
+                    >
+                      {schools.map((s) => (
+                        <option key={s.hub_school_id} value={s.hub_school_id}>{s.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -55,6 +55,14 @@ const formatUser = (user: any): ExtendedHubUser => {
   const role: HubUserRole =
     rawRole === 'master' ? 'master' : rawRole === 'teacher' ? 'teacher' : 'student';
 
+  const coins = Number(user?.metadata?.coins ?? 0);
+  const streak =
+    user?.metadata?.streak != null
+      ? Number(user.metadata.streak)
+      : user?.metadata?.first_access
+      ? Math.max(0, Math.floor((Date.now() - new Date(user.metadata.first_access).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
+
   return {
     ...EMPTY_HUB_USER,
     ...user,
@@ -63,9 +71,9 @@ const formatUser = (user: any): ExtendedHubUser => {
     initial,
     role,
     metadata: {
-      coins: user?.metadata?.coins ?? (role === 'student' ? 14874.14 : 0),
-      streak: user?.metadata?.streak ?? 7,
       ...user?.metadata,
+      coins,
+      streak,
     },
   };
 };

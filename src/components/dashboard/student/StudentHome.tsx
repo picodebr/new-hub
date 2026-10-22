@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sparkles,
   Coins,
@@ -16,6 +16,8 @@ import DailyChallengeDialog from './DailyChallengeDialog';
 import { useUser } from '@/hooks/useUser';
 import { useStudentAvatar } from '@/hooks/useStudentAvatar';
 import { updateProfile } from '@/_base/services/user';
+import { listUserCertificates } from '@/_base/services/certificates';
+import { listCourses } from '@/_base/services/course';
 import { formatCoin } from '@/_base/utils';
 import { toast } from 'sonner';
 import AvatarCustomizer, {
@@ -57,10 +59,12 @@ interface ProfileHeroProps {
   onEdit: () => void;
   balance: number;
   streak: number;
+  certsCount: number;
+  coursesCount: number;
   onOpenDaily: () => void;
 }
 
-const ProfileHero = ({ avatar, onEdit, balance, streak, onOpenDaily }: ProfileHeroProps) => {
+const ProfileHero = ({ avatar, onEdit, balance, streak, certsCount, coursesCount, onOpenDaily }: ProfileHeroProps) => {
   const { user } = useUser();
 
   return (
@@ -120,13 +124,13 @@ const ProfileHero = ({ avatar, onEdit, balance, streak, onOpenDaily }: ProfileHe
             <StatPill
               icon={<Trophy className="h-4 w-4" />}
               label="Certificados"
-              value="1"
+              value={certsCount.toString()}
               tone="blue"
             />
             <StatPill
               icon={<BookOpen className="h-4 w-4" />}
               label="Cursos"
-              value="3"
+              value={coursesCount.toString()}
               tone="emerald"
             />
             <StatPill
@@ -163,11 +167,32 @@ const ProfileHero = ({ avatar, onEdit, balance, streak, onOpenDaily }: ProfileHe
 const StudentHome = () => {
   const [openAvatar, setOpenAvatar] = useState(false);
   const [openDaily, setOpenDaily] = useState(false);
+  const [certsCount, setCertsCount] = useState<number>(0);
+  const [coursesCount, setCoursesCount] = useState<number>(0);
   const { user, setUser } = useUser();
   const { avatar, setAvatar } = useStudentAvatar();
 
-  const balance = user?.metadata?.coins ?? 14874.14;
-  const streak = user?.metadata?.streak ?? 7;
+  useEffect(() => {
+    listUserCertificates()
+      .then((certs) => {
+        if (Array.isArray(certs)) setCertsCount(certs.length);
+      })
+      .catch(() => setCertsCount(0));
+
+    listCourses()
+      .then((res: any) => {
+        const courses = res?.results || (Array.isArray(res) ? res : []);
+        setCoursesCount(courses.length || (user?.hub_class ? 1 : 0));
+      })
+      .catch(() => setCoursesCount(user?.hub_class ? 1 : 0));
+  }, [user?.hub_class]);
+
+  const balance = Number(user?.metadata?.coins ?? 0);
+  const streak = user?.metadata?.streak !== undefined
+    ? Number(user.metadata.streak)
+    : (user?.metadata?.first_access
+        ? Math.max(0, Math.floor((Date.now() - new Date(user.metadata.first_access).getTime()) / (1000 * 60 * 60 * 24)))
+        : 0);
 
   const handleRewardClaimed = (earnedCoins: number) => {
     if (user) {
@@ -215,6 +240,8 @@ const StudentHome = () => {
         onEdit={() => setOpenAvatar(true)}
         balance={balance}
         streak={streak}
+        certsCount={certsCount}
+        coursesCount={coursesCount}
         onOpenDaily={() => setOpenDaily(true)}
       />
 

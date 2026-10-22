@@ -38,7 +38,7 @@ export const ReportsView: React.FC = () => {
   const [formFiles, setFormFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { user } = useUser();
+  const { user, chosenSchool } = useUser();
   const navigate = useNavigate();
 
   const loadReports = async () => {
@@ -46,8 +46,6 @@ export const ReportsView: React.FC = () => {
       setIsLoading(true);
       const data = await listReports();
       setReports(Array.isArray(data) ? data : ((data as any)?.results || (data as any)?.data || []));
-
-
     } catch (err) {
       console.error('Error loading reports:', err);
       // Fallback empty
@@ -62,8 +60,9 @@ export const ReportsView: React.FC = () => {
   }, []);
 
   const handleCreate = async () => {
-    if (!formSubject.trim() || !formDescription.trim()) {
-      toast.error('Preencha o assunto e a descrição do problema');
+    const effectiveSubject = formContext === 'Plataforma' ? 'Plataforma' : formSubject.trim();
+    if (!effectiveSubject || !formDescription.trim()) {
+      toast.error('Preencha os campos obrigatórios');
       return;
     }
 
@@ -79,13 +78,15 @@ export const ReportsView: React.FC = () => {
         fileUrls = presignedUrls.map((r) => r.path);
       }
 
+      const schoolName = chosenSchool?.display_name || user?.school?.name || 'Escola PiCode';
+
       const newReport = await createReport({
         context: formContext as any,
-        subject: formSubject.trim(),
+        subject: effectiveSubject,
         text: formDescription.trim(),
         files: fileUrls,
         metadata: {
-          school_name: user?.school?.name || 'Escola PiCode',
+          school_name: schoolName,
         },
       });
 
@@ -266,22 +267,34 @@ export const ReportsView: React.FC = () => {
               </select>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Título do Chamado *
-              </label>
-              <input
-                type="text"
-                value={formSubject}
-                onChange={(e) => setFormSubject(e.target.value)}
-                placeholder="Ex: Sensor ultrassônico não conecta no Arduino"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-border/50 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
+            {formContext !== 'Plataforma' && (
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
+                  {formContext === 'Kits / Placas'
+                    ? 'Qual componente? *'
+                    : formContext === 'Biblioteca'
+                    ? 'Qual livro? *'
+                    : 'Assunto *'}
+                </label>
+                <input
+                  type="text"
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  placeholder={
+                    formContext === 'Kits / Placas'
+                      ? 'Ex: Sensor ultrassônico, Servo motor SG90...'
+                      : formContext === 'Biblioteca'
+                      ? 'Ex: Apostila Robótica 1º Ano...'
+                      : 'Ex: Dúvida sobre acesso...'
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-border/50 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Descrição detalhada *
+                Descreva o problema *
               </label>
               <textarea
                 value={formDescription}

@@ -12,13 +12,8 @@ interface CertificateItem {
   url?: string;
 }
 
-const DEFAULT_CERTIFICATES: CertificateItem[] = [
-  { id: '1', name: 'Formação Maker', date: '15/02/2026', color: '#F59E0B' },
-  { id: '2', name: 'Robótica Educacional', date: '10/01/2026', color: '#3B82F6' },
-];
-
 const MyCertificates = () => {
-  const [certs, setCerts] = useState<CertificateItem[]>(DEFAULT_CERTIFICATES);
+  const [certs, setCerts] = useState<CertificateItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,10 +29,13 @@ const MyCertificates = () => {
               url: c.link || (c as any).certificate_url,
             }))
           );
+        } else {
+          setCerts([]);
         }
       })
       .catch((err) => {
-        console.warn('Erro ao listar certificados da API, usando demonstrativo:', err);
+        console.warn('Erro ao listar certificados da API:', err);
+        setCerts([]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -45,9 +43,6 @@ const MyCertificates = () => {
   const handleOpenCertificate = (c: CertificateItem) => {
     if (c.url) {
       window.open(c.url, '_blank');
-    } else {
-      // Mock preview
-      window.open('/mock_api/certificate-demo.pdf', '_blank');
     }
   };
 

@@ -9,9 +9,11 @@ import VideoPlayer from './VideoPlayer';
 import QuizLesson from './QuizLesson';
 import AlgorithmLesson from './AlgorithmLesson';
 import MazeLesson from './MazeLesson';
-import { listCourses, listModules, listModuleLessons, getModuleLesson, getCourseActivity } from '@/_base/services/course';
+import { listCourses, listModules, listModuleLessons, getModuleLesson, getCourseActivity, sendModuleLesson } from '@/_base/services/course';
 import { IHubModuleLesson } from '@/_base/interfaces/module';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, CheckCircle2, Clock, Trophy, Target } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 const CoursesView = () => {
   const { courseId, moduleId, lessonId } = useParams<{
@@ -30,6 +32,22 @@ const CoursesView = () => {
   const [lessonIsFinished, setLessonIsFinished] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [challengeIndex, setChallengeIndex] = useState(0);
+  const [accumulatedAnswers, setAccumulatedAnswers] = useState<any[]>([]);
+  const [startTime, setStartTime] = useState<number>(Date.now());
+  const [resultModal, setResultModal] = useState<{
+    open: boolean;
+    correctCount: number;
+    totalCount: number;
+    time: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setChallengeIndex(0);
+    setAccumulatedAnswers([]);
+    setStartTime(Date.now());
+  }, [lessonId]);
+
 
   // Fetch courses on mount from real API
   useEffect(() => {
@@ -38,28 +56,37 @@ const CoursesView = () => {
       try {
         const response = await listCourses();
         const coursesList = response?.results || (response as any)?.data || [];
+        const activities = response?.activities || [];
         if (mounted && coursesList.length > 0) {
           const apiCourses: Course[] = coursesList.map((c: any) => {
-            const act = (response as any)?.activities?.find((a: any) => a.course_id === c.id);
-            const progress = act?.progress || 0;
+            const total = (c.modules || []).flatMap((m: any) => m.lessons || []).length;
+            const finished = (activities || [])
+              .filter((act: any) => act.hub_course_id === c.id)
+              .flatMap((act: any) => (act.metadata || []).flatMap((m: any) => m.lessons || []))
+              .filter((lesson: any) => !!lesson.finished_at).length;
+            const progress = total > 0 ? Math.min(Math.ceil((finished / total) * 100), 100) : 0;
+
             return {
               id: c.id,
               title: c.name || c.title || 'Curso PiCode',
               description: c.description || 'Aprenda robótica e programação na prática.',
               category: c.category || 'Robótica',
               duration: `${c.hours || 10}h`,
-              lessonsCount: c.lessons_count || 12,
+              lessonsCount: total || c.lessons_count || 12,
               progress,
               status: progress === 100 ? 'completed' : progress > 0 ? 'in_progress' : 'not_started',
               modules: (c.modules || []).map((m: any) => ({
                 id: m.id,
                 title: m.name || m.title,
-                lessonsCount: m.lessons_count || 0,
+                lessonsCount: (m.lessons || []).length || m.lessons_count || 0,
                 duration: `${m.hours || 2}h`,
+                metadata: m.metadata,
+                respect_hierarchy: m.metadata?.respect_hierarchy,
                 lessons: (m.lessons || []).map((l: any) => ({
                   id: l.id,
                   title: l.name || l.title,
                   duration: l.duration || '5:00',
+                  position: l.position || 1,
                   watched: !!l.watched,
                   type: l.type || 'video',
                 })),
@@ -241,6 +268,55 @@ const CoursesView = () => {
     };
   }, [courseId, moduleId, lessonId]);
 
+  const handleChallengeAnswer = async (answer: any) => {
+    const updated = accumulatedAnswers.filter((a) => a.hub_challenge_id !== answer.hub_challenge_id);
+    updated.push(answer);
+    setAccumulatedAnswers(updated);
+
+    const challenges = fullLesson?.challenges || [];
+    if (challenges.length > 1 && challengeIndex + 1 < challenges.length) {
+      setChallengeIndex((prev) => prev + 1);
+      toast.info(`Desafio ${challengeIndex + 1} de ${challenges.length} registrado!`);
+    } else {
+      // Completed all challenges for this lesson
+      try {
+        const res = await sendModuleLesson({
+          course_id: activeCourse?.id || courseId!,
+          module_id: activeModule?.id || moduleId!,
+          lesson_id: fullLesson?.id || lessonId!,
+          answers: updated,
+        });
+
+        const diff = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+        const minutes = Math.floor(diff / 60);
+        const seconds = diff % 60;
+        const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        const correctCount = res?.lessonData?.correctAnswersCount ?? updated.length;
+
+        setResultModal({
+          open: true,
+          correctCount,
+          totalCount: challenges.length || 1,
+          time: timeStr,
+        });
+        if (fullLesson?.id || lessonId) {
+          handleMarkWatched(fullLesson?.id || lessonId!);
+        }
+      } catch (err) {
+        console.warn('Erro ao finalizar aula de desafios:', err);
+        if (fullLesson?.id || lessonId) {
+          handleMarkWatched(fullLesson?.id || lessonId!);
+        }
+        setResultModal({
+          open: true,
+          correctCount: updated.length,
+          totalCount: challenges.length || 1,
+          time: '1m',
+        });
+      }
+    }
+  };
+
   const renderLessonRunner = () => {
     if (!activeCourse || !activeModule) return null;
 
@@ -253,22 +329,23 @@ const CoursesView = () => {
       );
     }
 
-    const firstChallenge: any = fullLesson?.challenges?.[0];
-    const quizAnswers: any[] = firstChallenge?.data?.quiz_answers || firstChallenge?.quiz_field?.options || [];
+    const challenges = fullLesson?.challenges || [];
+    const activeChallenge: any = challenges[challengeIndex] || challenges[0];
+    const quizAnswers: any[] = activeChallenge?.data?.quiz_answers || activeChallenge?.quiz_field?.options || [];
 
     const currentLessonData: any = fullLesson ? {
       id: fullLesson.id,
       title: fullLesson.title,
       duration: '10:00',
       watched: lessonIsFinished,
-      type: fullLesson.lesson_type,
+      type: activeChallenge?.type || fullLesson.lesson_type,
       video: fullLesson.video,
       challenges: fullLesson.challenges,
-      quiz_data: firstChallenge ? {
-        question: firstChallenge.title || firstChallenge.description || 'Pergunta',
+      quiz_data: activeChallenge ? {
+        question: activeChallenge.title || activeChallenge.description || 'Pergunta',
         options: quizAnswers.map((o: any) => o.text || o),
         correctIndex: quizAnswers.findIndex((o: any) => o.is_correct) >= 0 ? quizAnswers.findIndex((o: any) => o.is_correct) : 0,
-        explanation: firstChallenge.description || '',
+        explanation: activeChallenge.description || '',
       } : undefined,
     } : activeLesson || {
       id: lessonId,
@@ -278,12 +355,13 @@ const CoursesView = () => {
       watched: lessonIsFinished,
     };
 
-    const effectiveType = fullLesson?.lesson_type || currentLessonData.type || 'video';
+    const effectiveType = activeChallenge?.type || fullLesson?.lesson_type || currentLessonData.type || 'video';
 
     const commonProps = {
       course: activeCourse,
       module: activeModule,
       lesson: currentLessonData,
+      challenge: activeChallenge,
       fullModuleLesson: fullLesson,
       isFinished: lessonIsFinished,
       onBack: () => {
@@ -292,55 +370,146 @@ const CoursesView = () => {
         setFullLesson(null);
       },
       onMarkWatched: handleMarkWatched,
+      onAnswer: handleChallengeAnswer,
     };
 
-    switch (effectiveType) {
-      case 'quiz':
-        return <QuizLesson key="quiz" {...commonProps} />;
-      case 'algorithm':
-        return <AlgorithmLesson key="algorithm" {...commonProps} />;
-      case 'map':
-        return <MazeLesson key="maze" {...commonProps} />;
-      case 'video':
-      default:
-        return <VideoPlayer key="video" {...commonProps} />;
-    }
+    return (
+      <div className="space-y-4">
+        {challenges.length > 1 && (
+          <div className="flex items-center justify-between gap-4 p-4 rounded-2xl glass-card border border-border/40">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                Desafio {challengeIndex + 1} de {challenges.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={challengeIndex === 0}
+                onClick={() => setChallengeIndex((i) => Math.max(0, i - 1))}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border border-border/40 hover:bg-accent disabled:opacity-40"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+              </button>
+              <button
+                type="button"
+                disabled={challengeIndex >= challenges.length - 1}
+                onClick={() => setChallengeIndex((i) => Math.min(challenges.length - 1, i + 1))}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              >
+                Próximo <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(() => {
+          switch (effectiveType) {
+            case 'quiz':
+              return <QuizLesson key={`quiz-${challengeIndex}`} {...commonProps} />;
+            case 'algorithm':
+              return <AlgorithmLesson key={`algo-${challengeIndex}`} {...commonProps} />;
+            case 'map':
+              return <MazeLesson key={`maze-${challengeIndex}`} {...commonProps} />;
+            case 'video':
+            default:
+              return <VideoPlayer key="video" {...commonProps} />;
+          }
+        })()}
+      </div>
+    );
   };
 
-
   return (
-    <AnimatePresence mode="wait">
-      {lessonId && activeLesson ? (
-        renderLessonRunner()
-      ) : moduleId && activeModule && activeCourse ? (
-        <LessonList
-          key="lessons"
-          course={activeCourse}
-          module={activeModule}
-          onBack={() => {
-            navigate(`/courses/${activeCourse.id}`);
-            setSelectedModule(null);
-          }}
-          onSelectLesson={handleSelectLesson}
-        />
-      ) : courseId && activeCourse ? (
-        <ModuleList
-          key="modules"
-          course={activeCourse}
-          onBack={() => {
-            navigate('/courses');
-            setSelectedCourse(null);
-          }}
-          onSelectModule={handleSelectModule}
-        />
-      ) : (
-        <CourseList
-          key="courses"
-          courses={courses}
-          onSelectCourse={handleSelectCourse}
-        />
-      )}
-    </AnimatePresence>
+    <>
+      <AnimatePresence mode="wait">
+        {lessonId && activeLesson ? (
+          renderLessonRunner()
+        ) : moduleId && activeModule && activeCourse ? (
+          <LessonList
+            key="lessons"
+            course={activeCourse}
+            module={activeModule}
+            onBack={() => {
+              navigate(`/courses/${activeCourse.id}`);
+              setSelectedModule(null);
+            }}
+            onSelectLesson={handleSelectLesson}
+          />
+        ) : courseId && activeCourse ? (
+          <ModuleList
+            key="modules"
+            course={activeCourse}
+            onBack={() => {
+              navigate('/courses');
+              setSelectedCourse(null);
+            }}
+            onSelectModule={handleSelectModule}
+          />
+        ) : (
+          <CourseList
+            key="courses"
+            courses={courses}
+            onSelectCourse={handleSelectCourse}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Result Dialog */}
+      <Dialog
+        open={!!resultModal?.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResultModal(null);
+            navigate(`/courses/${activeCourse?.id || courseId}/${activeModule?.id || moduleId}`);
+          }
+        }}
+      >
+        <DialogContent className="glass-card max-w-md p-6 sm:rounded-3xl border-border/50 text-center">
+          <DialogHeader className="items-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 mb-3 ring-1 ring-emerald-500/20">
+              <Trophy className="h-8 w-8" />
+            </div>
+            <DialogTitle className="text-xl font-bold text-foreground">
+              Aula Concluída com Sucesso!
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Você finalizou todos os desafios propostos para esta etapa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3 my-4">
+            <div className="p-3 rounded-2xl border border-border/40 bg-card/60">
+              <div className="flex items-center justify-center gap-1.5 text-primary text-xs font-bold mb-1">
+                <Target className="w-3.5 h-3.5" /> Acertos
+              </div>
+              <p className="text-lg font-extrabold text-foreground">
+                {resultModal?.correctCount || 0}/{resultModal?.totalCount || 1}
+              </p>
+            </div>
+
+            <div className="p-3 rounded-2xl border border-border/40 bg-card/60">
+              <div className="flex items-center justify-center gap-1.5 text-amber-500 text-xs font-bold mb-1">
+                <Clock className="w-3.5 h-3.5" /> Tempo
+              </div>
+              <p className="text-lg font-extrabold text-foreground">
+                {resultModal?.time || '1m'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setResultModal(null);
+              navigate(`/courses/${activeCourse?.id || courseId}/${activeModule?.id || moduleId}`);
+            }}
+            className="w-full py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all"
+          >
+            Continuar Jornada
+          </button>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

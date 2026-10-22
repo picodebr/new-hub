@@ -67,11 +67,6 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
         setTimeout(() => setShake(false), 500);
       }
     } catch (err: any) {
-      if (fullCode === '123456') {
-        toast.info('Modo demonstração: código 123456 validado');
-        onVerified(fullCode);
-        return;
-      }
       const msg = err?.response?.data?.message || err?.message || 'Código inválido. Verifique e tente novamente.';
       setError(msg);
       setShake(true);
@@ -144,10 +139,6 @@ const ResetCodeInput = ({ email, onBack, onVerified }: ResetCodeInputProps) => {
       >
         {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verificar código'}
       </button>
-
-      <p className="text-[11px] text-muted-foreground/70 text-center mt-4">
-        Dica de demonstração: use o código <span className="font-mono font-semibold">123456</span>
-      </p>
     </motion.div>
   );
 };

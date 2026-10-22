@@ -10,22 +10,42 @@ import {
   Star,
   Sparkles,
   MessageCircle,
-  ChevronLeft,
-  ChevronRight,
   Reply,
   Trash2,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react';
-import { Story } from './comunidadeData';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { useUser } from '@/hooks/useUser';
 import { IHubCommunityPost } from '@/_base/interfaces/community';
-import { listCommunityPosts, createCommunityPost, deleteCommunityPost, updateCommunityPostReaction } from '@/_base/services/community';
+import {
+  listCommunityPosts,
+  createCommunityPost,
+  deleteCommunityPost,
+  updateCommunityPostReaction,
+} from '@/_base/services/community';
 import { getPresignedUrl, uploadFile } from '@/_base/services/upload';
 import { toast } from 'sonner';
 
+interface RawReactionsMap {
+  like: string[];
+  heart: string[];
+  star: string[];
+  light: string[];
+  [key: string]: string[];
+}
+
 interface PostDisplay {
   id: string;
+  title?: string;
   author: string;
   avatar: string;
   institution: string;
@@ -33,6 +53,7 @@ interface PostDisplay {
   images: string[];
   timeAgo: string;
   reactions: { type: string; count: number; reacted: boolean }[];
+  rawReactions: RawReactionsMap;
   comments: CommentDisplay[];
   userId?: string;
 }
@@ -45,6 +66,7 @@ interface CommentDisplay {
   text: string;
   timeAgo: string;
   reactions: { type: string; count: number; reacted: boolean }[];
+  rawReactions: RawReactionsMap;
   replies: CommentDisplay[];
   userId?: string;
 }
@@ -86,116 +108,39 @@ const formatTimeAgo = (dateStr: string | Date) => {
   }
 };
 
-const StoriesBar = ({
-  stories,
-  onAddStory,
-  onViewStory,
+const ReactionBar = ({
+  reactions,
+  onReact,
 }: {
-  stories: Story[];
-  onAddStory: () => void;
-  onViewStory: (s: Story, index: number) => void;
+  reactions: { type: string; count: number; reacted: boolean }[];
+  onReact: (type: string) => void;
 }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const updateScrollState = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  };
-
-  useEffect(() => {
-    updateScrollState();
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener('scroll', updateScrollState);
-    window.addEventListener('resize', updateScrollState);
-    return () => {
-      el.removeEventListener('scroll', updateScrollState);
-      window.removeEventListener('resize', updateScrollState);
-    };
-  }, [stories.length]);
-
-  const scroll = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 200, behavior: 'smooth' });
-
   return (
-    <div className="relative">
-      {canScrollLeft && (
-        <button
-          onClick={() => scroll(-1)}
-          className="absolute left-0 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md backdrop-blur transition-colors hover:bg-accent xl:flex"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-      )}
-
-      <div
-        ref={scrollRef}
-        className="flex flex-wrap gap-x-2 gap-y-3 py-2 sm:gap-x-3 xl:flex-nowrap xl:overflow-x-auto xl:px-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {stories.map((s, i) => (
+    <div className="flex flex-wrap items-center gap-1">
+      {reactions.map((r) => {
+        const config = reactionIcons[r.type];
+        if (!config) return null;
+        const Icon = config.icon;
+        return (
           <motion.button
-            key={s.id}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: i * 0.05 }}
-            onClick={() => (i === 0 ? onAddStory() : onViewStory(s, i))}
-            className="flex w-[calc(25%-6px)] min-w-[60px] flex-col items-center gap-1.5 sm:w-[calc(20%-10px)] xl:w-auto xl:min-w-0 xl:flex-shrink-0"
+            key={r.type}
+            whileTap={{ scale: 0.85 }}
+            onClick={() => onReact(r.type)}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors ${
+              r.reacted
+                ? 'bg-primary/10 font-bold ' + config.color
+                : 'text-muted-foreground hover:bg-accent/80'
+            }`}
+            title={config.label}
           >
-            <div
-              className={`h-14 w-14 rounded-full p-[2.5px] sm:h-16 sm:w-16 ${
-                i === 0
-                  ? 'border-2 border-dashed border-primary'
-                  : s.viewed
-                    ? 'border-2 border-muted-foreground/30'
-                    : 'bg-gradient-to-br from-primary via-blue-400 to-cyan-400'
-              }`}
-            >
-              <div
-                className={`flex h-full w-full items-center justify-center overflow-hidden rounded-full ${getAvatarColor(s.author)} text-xs font-bold text-white`}
-              >
-                {i === 0 ? <Plus className="h-5 w-5" /> : getInitials(s.author)}
-              </div>
-            </div>
-            <span className="w-full truncate text-center text-[10px] text-muted-foreground sm:text-[11px]">{s.author}</span>
+            <Icon className="h-3.5 w-3.5" />
+            <span>{r.count}</span>
           </motion.button>
-        ))}
-      </div>
-
-      {canScrollRight && (
-        <button
-          onClick={() => scroll(1)}
-          className="absolute right-0 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md backdrop-blur transition-colors hover:bg-accent xl:flex"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      )}
+        );
+      })}
     </div>
   );
 };
-
-const ReactionBar = ({ reactions, onReact }: { reactions: { type: string; count: number; reacted: boolean }[]; onReact: (type: string) => void }) => (
-  <div className="flex max-w-full flex-wrap items-center gap-1">
-    {reactions.map((r) => {
-      const cfg = reactionIcons[r.type] || reactionIcons.like;
-      const Icon = cfg.icon;
-      return (
-        <button
-          key={r.type}
-          onClick={() => onReact(r.type)}
-          className={`flex items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium transition-all sm:px-2.5 sm:text-xs ${
-            r.reacted ? `bg-accent ${cfg.color}` : 'text-muted-foreground hover:bg-accent'
-          }`}
-        >
-          <Icon className="h-3.5 w-3.5" />
-          <span>{r.count}</span>
-        </button>
-      );
-    })}
-  </div>
-);
 
 const CommentItem = ({
   comment,
@@ -218,7 +163,9 @@ const CommentItem = ({
     <div className="space-y-2 overflow-hidden">
       <div className="flex gap-2 sm:gap-3">
         <div
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white sm:h-9 sm:w-9 sm:text-xs ${getAvatarColor(comment.author)}`}
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white sm:h-9 sm:w-9 sm:text-xs ${getAvatarColor(
+            comment.author
+          )}`}
         >
           {getInitials(comment.author)}
         </div>
@@ -227,7 +174,7 @@ const CommentItem = ({
           <div className="glass-card !rounded-2xl overflow-hidden p-3 relative group">
             <div className="flex items-center justify-between">
               <p className="truncate text-sm font-semibold text-primary">{comment.author}</p>
-              {onDelete && comment.userId === currentUserId && (
+              {onDelete && (comment.userId === currentUserId || !comment.userId) && (
                 <button
                   onClick={() => onDelete(comment.id)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive"
@@ -255,7 +202,11 @@ const CommentItem = ({
           </div>
 
           {showReply && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 flex gap-2">
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-2 flex gap-2"
+            >
               <input
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -286,8 +237,12 @@ const CommentItem = ({
 
           {comment.replies.length > 0 && (
             <div className="mt-2 ml-1 space-y-3 overflow-hidden border-l-2 border-border/50 pl-3 sm:ml-2">
-              <button onClick={() => setShowReplies(!showReplies)} className="text-xs text-muted-foreground hover:text-foreground">
-                {showReplies ? '▾' : '▸'} {comment.replies.length} resposta{comment.replies.length > 1 ? 's' : ''}
+              <button
+                onClick={() => setShowReplies(!showReplies)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showReplies ? '▾' : '▸'} {comment.replies.length} resposta
+                {comment.replies.length > 1 ? 's' : ''}
               </button>
               {showReplies &&
                 comment.replies.map((r) => (
@@ -332,10 +287,16 @@ const PostCard = ({
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card !rounded-2xl max-w-full overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass-card !rounded-2xl max-w-full overflow-hidden"
+    >
       <div className="flex items-center gap-2.5 p-3 pb-2 sm:gap-3 sm:p-4 sm:pb-3">
         <div
-          className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white sm:h-11 sm:w-11 sm:text-sm ${getAvatarColor(post.author)}`}
+          className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white sm:h-11 sm:w-11 sm:text-sm ${getAvatarColor(
+            post.author
+          )}`}
         >
           {getInitials(post.author)}
         </div>
@@ -345,11 +306,11 @@ const PostCard = ({
         </div>
         <div className="flex items-center gap-2">
           <span className="shrink-0 text-[11px] text-muted-foreground sm:text-xs">{post.timeAgo}</span>
-          {post.userId === currentUserId && (
+          {(post.userId === currentUserId || !post.userId) && (
             <button
               onClick={() => onDeletePost(post.id)}
-              className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              title="Excluir post"
+              className="p-1.5 text-muted-foreground hover:text-destructive rounded-lg hover:bg-destructive/10 transition-colors"
+              title="Excluir postagem"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -357,199 +318,132 @@ const PostCard = ({
         </div>
       </div>
 
-      <div className="overflow-hidden px-3 pb-2 sm:px-4 sm:pb-3">
-        <p className="break-words text-xs leading-relaxed text-foreground sm:text-sm whitespace-pre-wrap">{post.text}</p>
+      <div className="px-3 pb-3 sm:px-4 sm:pb-4 space-y-2">
+        {post.title && (
+          <h2 className="text-base font-bold text-foreground tracking-tight">{post.title}</h2>
+        )}
+        <p className="whitespace-pre-wrap text-sm text-foreground">{post.text}</p>
       </div>
 
       {post.images.length > 0 && (
-        <div className={`grid gap-1 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <div
+          className={`grid gap-1 px-3 pb-3 sm:px-4 sm:pb-4 ${
+            post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+          }`}
+        >
           {post.images.map((img, i) => (
-            <img
+            <div
               key={i}
-              src={img}
-              alt=""
-              className="block h-36 w-full min-w-0 object-cover sm:h-56 md:h-64 cursor-pointer hover:opacity-95 transition-opacity"
               onClick={() => setExpandedImage(img)}
-            />
+              className="overflow-hidden rounded-xl border border-border/40 cursor-pointer aspect-video bg-black/40"
+            >
+              <img
+                src={img.startsWith('http') ? img : `https://hub-files-hml.s3.amazonaws.com/${img}`}
+                alt=""
+                className="h-full w-full object-cover transition-transform hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            </div>
           ))}
         </div>
       )}
 
-      <div className="flex flex-col gap-2 border-t border-border/30 p-3 pb-2 sm:p-4 sm:pb-3">
+      {/* Image Preview Modal */}
+      <Dialog open={!!expandedImage} onOpenChange={(open) => !open && setExpandedImage(null)}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black/90 border-border/40">
+          {expandedImage && (
+            <img
+              src={expandedImage.startsWith('http') ? expandedImage : `https://hub-files-hml.s3.amazonaws.com/${expandedImage}`}
+              alt="Visualização"
+              className="w-full max-h-[85vh] object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex flex-col gap-2 border-t border-border/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <ReactionBar reactions={post.reactions} onReact={(type) => onReact(post.id, type)} />
         <button
           onClick={() => setShowComments(!showComments)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           <MessageCircle className="h-4 w-4" />
-          <span>
-            {post.comments.length} comentário{post.comments.length !== 1 ? 's' : ''}
-          </span>
+          <span>{post.comments.length} comentários</span>
         </button>
       </div>
 
-      <div className="flex gap-2 px-3 pb-3 sm:px-4">
-        <input
-          value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Faça um comentário..."
-          className="min-w-0 flex-1 rounded-full border border-border/50 bg-accent/50 px-3 py-2 text-xs transition-shadow focus:outline-none focus:ring-2 focus:ring-primary/30 sm:px-4 sm:py-2.5 sm:text-sm"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && commentText.trim()) {
-              onComment(post.id, commentText);
-              setCommentText('');
-            }
-          }}
-        />
-        <button
-          onClick={() => {
-            if (commentText.trim()) {
-              onComment(post.id, commentText);
-              setCommentText('');
-            }
-          }}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 sm:h-10 sm:w-10"
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      </div>
+      {showComments && (
+        <div className="border-t border-border/30 bg-accent/20 p-3 sm:p-4 space-y-4">
+          <div className="space-y-3">
+            {post.comments.map((comment) => (
+              <CommentItem
+                key={comment.id}
+                comment={comment}
+                currentUserId={currentUserId}
+                onReact={(commentId, type) => onCommentReact(post.id, commentId, type)}
+                onReply={(commentId, text) => onCommentReply(post.id, commentId, text)}
+                onDelete={onDeleteComment}
+              />
+            ))}
+          </div>
 
-      {showComments && post.comments.length > 0 && (
-        <div className="space-y-3 overflow-hidden px-3 pb-4 sm:px-4">
-          <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1 text-xs text-muted-foreground">
-            Comentários <span className="text-[10px]">▾</span>
-          </button>
-          {post.comments.map((c) => (
-            <CommentItem
-              key={c.id}
-              comment={c}
-              currentUserId={currentUserId}
-              onReact={(cId, type) => onCommentReact(post.id, cId, type)}
-              onReply={(cId, text) => onCommentReply(post.id, cId, text)}
-              onDelete={onDeleteComment}
+          <div className="flex gap-2">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Escreva um comentário..."
+              className="min-w-0 flex-1 rounded-full border border-border/50 bg-background/80 px-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 sm:text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && commentText.trim()) {
+                  onComment(post.id, commentText);
+                  setCommentText('');
+                }
+              }}
             />
-          ))}
+            <button
+              onClick={() => {
+                if (commentText.trim()) {
+                  onComment(post.id, commentText);
+                  setCommentText('');
+                }
+              }}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
-
-      <Dialog open={!!expandedImage} onOpenChange={() => setExpandedImage(null)}>
-        <DialogContent className="max-w-[95vw] !rounded-2xl border-none bg-black/90 p-0 overflow-hidden sm:max-w-3xl">
-          {expandedImage && <img src={expandedImage} alt="" className="max-h-[85vh] w-full object-contain" />}
-        </DialogContent>
-      </Dialog>
     </motion.div>
   );
 };
 
-const StoryViewer = ({
-  stories,
-  startIndex,
-  onClose,
-}: {
-  stories: Story[];
-  startIndex: number;
-  onClose: () => void;
-}) => {
-  const [index, setIndex] = useState(startIndex);
-  const story = stories[index];
-
-  const next = () => {
-    if (index < stories.length - 1) setIndex(index + 1);
-    else onClose();
-  };
-  const prev = () => {
-    if (index > 0) setIndex(index - 1);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') next();
-      else if (e.key === 'ArrowLeft') prev();
-      else if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [index]);
-
-  if (!story) return null;
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] !rounded-2xl border-none bg-black p-0 overflow-hidden sm:max-w-md">
-        <div className="relative overflow-hidden">
-          <div className="absolute left-0 right-0 top-0 z-10 flex gap-1 p-2">
-            {stories.map((_, i) => (
-              <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
-                {i === index && (
-                  <motion.div
-                    key={`bar-${index}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 5, ease: 'linear' }}
-                    className="h-full rounded-full bg-white"
-                    onAnimationComplete={next}
-                  />
-                )}
-                {i < index && <div className="h-full w-full rounded-full bg-white" />}
-              </div>
-            ))}
-          </div>
-          <div className="absolute left-3 top-5 z-10 flex items-center gap-2">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(story.author)}`}>
-              {getInitials(story.author)}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{story.author}</p>
-              <p className="text-[10px] text-white/60">{story.createdAt}</p>
-            </div>
-          </div>
-
-          <img src={story.imageUrl} alt="" className="h-[60vh] w-full object-cover sm:h-[70vh]" />
-
-          <button onClick={prev} className="absolute left-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none" aria-label="Story anterior" />
-          <button onClick={next} className="absolute right-0 top-0 z-20 h-full w-1/3 cursor-pointer focus:outline-none" aria-label="Próximo story" />
-
-          {index > 0 && (
-            <button
-              onClick={prev}
-              className="absolute left-2 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/60"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          )}
-          {index < stories.length - 1 && (
-            <button
-              onClick={next}
-              className="absolute right-2 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/60"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const ComunidadeView = () => {
+export const ComunidadeView = () => {
   const { user } = useUser();
   const [posts, setPosts] = useState<PostDisplay[]>([]);
-  const [stories] = useState<Story[]>([
-    { id: '1', author: user?.display_name || 'Seu story', avatar: user?.avatar || '', imageUrl: '', viewed: false, createdAt: '' }
-  ]);
-  const [storyIndex, setStoryIndex] = useState<number | null>(null);
+  const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostText, setNewPostText] = useState('');
   const [newPostFiles, setNewPostFiles] = useState<File[]>([]);
   const [newPostPreviews, setNewPostPreviews] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: 'post' | 'comment'; id: string } | null>(
+    null
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Map API post to display format
   const mapApiPostToDisplay = (apiPost: IHubCommunityPost, currentUserId?: string): PostDisplay => {
-    const reactionsMap = apiPost.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+    const defaultReactions: RawReactionsMap = { like: [], heart: [], star: [], light: [] };
+    const reactionsMap: RawReactionsMap = {
+      ...defaultReactions,
+      ...(apiPost.metadata?.reactions || {}),
+    };
+
     const reactions = ['like', 'heart', 'star', 'light'].map((type) => {
-      const userList = (reactionsMap as any)[type] || [];
+      const userList = reactionsMap[type] || [];
       return {
         type,
         count: userList.length,
@@ -560,9 +454,13 @@ const ComunidadeView = () => {
     const images = (apiPost.metadata?.media || []).map((m) => m.uri).filter(Boolean);
 
     const comments: CommentDisplay[] = (apiPost.replies || []).map((reply) => {
-      const replyReactionsMap = reply.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+      const replyReactionsMap: RawReactionsMap = {
+        ...defaultReactions,
+        ...(reply.metadata?.reactions || {}),
+      };
+
       const replyReactions = ['like', 'heart', 'star', 'light'].map((type) => {
-        const uList = (replyReactionsMap as any)[type] || [];
+        const uList = replyReactionsMap[type] || [];
         return {
           type,
           count: uList.length,
@@ -571,7 +469,11 @@ const ComunidadeView = () => {
       });
 
       const nestedReplies: CommentDisplay[] = (reply.replies || []).map((subReply) => {
-        const subMap = subReply.metadata?.reactions || { like: [], heart: [], light: [], star: [] };
+        const subMap: RawReactionsMap = {
+          ...defaultReactions,
+          ...(subReply.metadata?.reactions || {}),
+        };
+
         return {
           id: subReply.id,
           author: (subReply.user as any)?.display_name || subReply.user?.name || 'Usuário PiCode',
@@ -579,10 +481,11 @@ const ComunidadeView = () => {
           institution: subReply.user?.username || 'PiCode',
           text: subReply.content,
           timeAgo: formatTimeAgo(subReply.created_at),
+          rawReactions: subMap,
           reactions: ['like', 'heart', 'star', 'light'].map((type) => ({
             type,
-            count: ((subMap as any)[type] || []).length,
-            reacted: currentUserId ? ((subMap as any)[type] || []).includes(currentUserId) : false,
+            count: (subMap[type] || []).length,
+            reacted: currentUserId ? (subMap[type] || []).includes(currentUserId) : false,
           })),
           replies: [],
           userId: subReply.hub_user_id,
@@ -596,6 +499,7 @@ const ComunidadeView = () => {
         institution: reply.user?.username || 'PiCode',
         text: reply.content,
         timeAgo: formatTimeAgo(reply.created_at),
+        rawReactions: replyReactionsMap,
         reactions: replyReactions,
         replies: nestedReplies,
         userId: reply.hub_user_id,
@@ -604,6 +508,7 @@ const ComunidadeView = () => {
 
     return {
       id: apiPost.id,
+      title: apiPost.title,
       author: (apiPost.user as any)?.display_name || apiPost.user?.name || 'Usuário PiCode',
       avatar: apiPost.user?.avatar || '',
       institution: apiPost.user?.username || 'PiCode',
@@ -611,6 +516,7 @@ const ComunidadeView = () => {
       images,
       timeAgo: formatTimeAgo(apiPost.created_at),
       reactions,
+      rawReactions: reactionsMap,
       comments,
       userId: apiPost.hub_user_id,
     };
@@ -660,31 +566,38 @@ const ComunidadeView = () => {
       let uploadedMedia: { uri: string; label: string }[] = [];
       if (newPostFiles.length > 0) {
         const presigned = await Promise.all(
-          newPostFiles.map((f) => getPresignedUrl(f.type || 'image/png', 'community_posts').then((r) => ({ ...r, file: f })))
+          newPostFiles.map((f) =>
+            getPresignedUrl(f.type || 'image/png', 'community_posts').then((r) => ({ ...r, file: f }))
+          )
         );
         await Promise.all(presigned.map(({ link, file }) => uploadFile(link, file)));
         uploadedMedia = presigned.map(({ path, file }) => ({ uri: path, label: file.name }));
       }
 
       const created = await createCommunityPost({
+        title: newPostTitle.trim() || 'Publicação',
         content: newPostText,
         metadata: {
-          media: uploadedMedia.length > 0 ? uploadedMedia : newPostPreviews.map((p) => ({ uri: p, label: 'image' })),
+          media:
+            uploadedMedia.length > 0
+              ? uploadedMedia
+              : newPostPreviews.map((p) => ({ uri: p, label: 'image' })),
         },
       });
 
       if (created?.id) {
         setPosts((prev) => [mapApiPostToDisplay(created, user?.id), ...prev]);
       } else {
-        // Local fallback append
         const localPost: PostDisplay = {
           id: Date.now().toString(),
+          title: newPostTitle.trim() || undefined,
           author: user?.name || 'Eu',
           avatar: user?.avatar || '',
           institution: 'PiCode',
           text: newPostText,
           images: newPostPreviews,
           timeAgo: 'agora',
+          rawReactions: { like: [], heart: [], star: [], light: [] },
           reactions: [
             { type: 'like', count: 0, reacted: false },
             { type: 'heart', count: 0, reacted: false },
@@ -698,6 +611,7 @@ const ComunidadeView = () => {
       }
 
       toast.success('Publicação enviada com sucesso!');
+      setNewPostTitle('');
       setNewPostText('');
       setNewPostFiles([]);
       setNewPostPreviews([]);
@@ -710,24 +624,44 @@ const ComunidadeView = () => {
   };
 
   const toggleReaction = async (postId: string, type: string) => {
-    // Optimistic UI update
+    const targetPost = posts.find((p) => p.id === postId);
+    if (!targetPost || !user?.id) return;
+
+    const currentArray = targetPost.rawReactions[type] || [];
+    const hasReacted = currentArray.includes(user.id);
+    const updatedArray = hasReacted
+      ? currentArray.filter((uid) => uid !== user.id)
+      : [...currentArray, user.id];
+
+    const updatedReactions: RawReactionsMap = {
+      ...targetPost.rawReactions,
+      [type]: updatedArray,
+    };
+
     setPosts((prev) =>
       prev.map((p) =>
         p.id !== postId
           ? p
           : {
               ...p,
+              rawReactions: updatedReactions,
               reactions: p.reactions.map((r) =>
-                r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }
+                r.type !== type
+                  ? r
+                  : {
+                      ...r,
+                      reacted: !hasReacted,
+                      count: updatedArray.length,
+                    }
               ),
             }
       )
     );
 
     try {
-      await updateCommunityPostReaction({ id: postId, ...({ type } as any) });
-    } catch {
-      // Revert if API fails
+      await updateCommunityPostReaction({ id: postId, reactions: updatedReactions });
+    } catch (err) {
+      console.warn('Erro ao atualizar reação no servidor:', err);
     }
   };
 
@@ -745,6 +679,7 @@ const ComunidadeView = () => {
         institution: 'PiCode',
         text,
         timeAgo: 'agora',
+        rawReactions: { like: [], heart: [], star: [], light: [] },
         reactions: [
           { type: 'like', count: 0, reacted: false },
           { type: 'heart', count: 0, reacted: false },
@@ -776,6 +711,7 @@ const ComunidadeView = () => {
         institution: 'PiCode',
         text,
         timeAgo: 'agora',
+        rawReactions: { like: [], heart: [], star: [], light: [] },
         reactions: [
           { type: 'like', count: 0, reacted: false },
           { type: 'heart', count: 0, reacted: false },
@@ -792,7 +728,9 @@ const ComunidadeView = () => {
             ? p
             : {
                 ...p,
-                comments: p.comments.map((c) => (c.id !== commentId ? c : { ...c, replies: [...c.replies, reply] })),
+                comments: p.comments.map((c) =>
+                  c.id !== commentId ? c : { ...c, replies: [...c.replies, reply] }
+                ),
               }
         )
       );
@@ -802,57 +740,118 @@ const ComunidadeView = () => {
     }
   };
 
-  const toggleCommentReaction = async (_postId: string, commentId: string, type: string) => {
+  const toggleCommentReaction = async (postId: string, commentId: string, type: string) => {
+    if (!user?.id) return;
+    const targetPost = posts.find((p) => p.id === postId);
+    if (!targetPost) return;
+
+    let targetComment: CommentDisplay | undefined = targetPost.comments.find((c) => c.id === commentId);
+    let isNested = false;
+
+    if (!targetComment) {
+      for (const c of targetPost.comments) {
+        const found = c.replies.find((r) => r.id === commentId);
+        if (found) {
+          targetComment = found;
+          isNested = true;
+          break;
+        }
+      }
+    }
+
+    if (!targetComment) return;
+
+    const currentArray = targetComment.rawReactions[type] || [];
+    const hasReacted = currentArray.includes(user.id);
+    const updatedArray = hasReacted
+      ? currentArray.filter((uid) => uid !== user.id)
+      : [...currentArray, user.id];
+
+    const updatedReactions: RawReactionsMap = {
+      ...targetComment.rawReactions,
+      [type]: updatedArray,
+    };
+
     setPosts((prev) =>
-      prev.map((p) => ({
-        ...p,
-        comments: p.comments.map((c) =>
-          c.id !== commentId
-            ? c
-            : {
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        return {
+          ...p,
+          comments: p.comments.map((c) => {
+            if (c.id === commentId) {
+              return {
                 ...c,
+                rawReactions: updatedReactions,
                 reactions: c.reactions.map((r) =>
-                  r.type !== type ? r : { ...r, reacted: !r.reacted, count: r.reacted ? r.count - 1 : r.count + 1 }
+                  r.type !== type
+                    ? r
+                    : {
+                        ...r,
+                        reacted: !hasReacted,
+                        count: updatedArray.length,
+                      }
                 ),
-              }
-        ),
-      }))
+              };
+            }
+            return {
+              ...c,
+              replies: c.replies.map((r) => {
+                if (r.id === commentId) {
+                  return {
+                    ...r,
+                    rawReactions: updatedReactions,
+                    reactions: r.reactions.map((rx) =>
+                      rx.type !== type
+                        ? rx
+                        : {
+                            ...rx,
+                            reacted: !hasReacted,
+                            count: updatedArray.length,
+                          }
+                    ),
+                  };
+                }
+                return r;
+              }),
+            };
+          }),
+        };
+      })
     );
 
     try {
-      await updateCommunityPostReaction({ id: commentId, ...({ type } as any) });
-    } catch {}
-  };
-
-  const handleDeletePost = async (postId: string) => {
-    if (!confirm('Deseja realmente excluir esta publicação?')) return;
-    try {
-      await deleteCommunityPost(postId);
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
-      toast.success('Publicação excluída com sucesso!');
-    } catch {
-      toast.error('Erro ao excluir publicação');
+      await updateCommunityPostReaction({ id: commentId, reactions: updatedReactions });
+    } catch (err) {
+      console.warn('Erro ao sincronizar reação de comentário:', err);
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
-    if (!confirm('Deseja realmente excluir esta resposta?')) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { type, id } = deleteConfirm;
+    setDeleteConfirm(null);
+
     try {
-      await deleteCommunityPost(commentId);
-      setPosts((prev) =>
-        prev.map((p) => ({
-          ...p,
-          comments: p.comments
-            .filter((c) => c.id !== commentId)
-            .map((c) => ({
-              ...c,
-              replies: c.replies.filter((r) => r.id !== commentId),
-            })),
-        }))
-      );
-      toast.success('Resposta excluída!');
+      await deleteCommunityPost(id);
+      if (type === 'post') {
+        setPosts((prev) => prev.filter((p) => p.id !== id));
+        toast.success('Publicação excluída com sucesso!');
+      } else {
+        setPosts((prev) =>
+          prev.map((p) => ({
+            ...p,
+            comments: p.comments
+              .filter((c) => c.id !== id)
+              .map((c) => ({
+                ...c,
+                replies: c.replies.filter((r) => r.id !== id),
+              })),
+          }))
+        );
+        toast.success('Resposta excluída com sucesso!');
+      }
     } catch {
-      toast.error('Erro ao excluir resposta');
+      toast.error('Erro ao excluir item');
     }
   };
 
@@ -861,18 +860,23 @@ const ComunidadeView = () => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="mx-auto w-full max-w-2xl space-y-3 overflow-x-hidden sm:space-y-5"
+      className="mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden"
     >
-      <div className="glass-card !rounded-2xl overflow-hidden p-3 sm:p-4">
-        <StoriesBar stories={stories} onAddStory={() => {}} onViewStory={(_s, i) => setStoryIndex(i - 1)} />
-      </div>
+      {/* Create Post Box */}
+      <div className="glass-card !rounded-2xl space-y-3 overflow-hidden p-4 sm:p-5 border border-border/50">
+        <input
+          type="text"
+          value={newPostTitle}
+          onChange={(e) => setNewPostTitle(e.target.value)}
+          placeholder="Título da publicação (opcional)..."
+          className="w-full text-sm font-semibold bg-transparent border-b border-border/40 pb-2 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/60 transition-colors"
+        />
 
-      <div className="glass-card !rounded-2xl space-y-3 overflow-hidden p-3 sm:p-4">
         <textarea
           value={newPostText}
           onChange={(e) => setNewPostText(e.target.value)}
-          placeholder="Comece uma publicação na comunidade PiCode..."
-          className="min-h-[80px] w-full resize-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none sm:min-h-[100px] sm:text-sm"
+          placeholder="Compartilhe suas ideias, projetos ou dúvidas com a comunidade PiCode..."
+          className="min-h-[90px] w-full resize-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none sm:min-h-[110px] sm:text-sm"
         />
 
         {newPostPreviews.length > 0 && (
@@ -896,53 +900,99 @@ const ComunidadeView = () => {
 
         <div className="flex flex-col gap-2 border-t border-border/30 pt-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 gap-2">
-            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImageUpload}
+            />
             <button
               onClick={() => fileRef.current?.click()}
-              className="flex min-w-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent sm:px-3 sm:py-2 sm:text-xs"
+              className="flex items-center gap-1.5 rounded-full bg-accent/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <ImageIcon className="h-4 w-4 shrink-0" /> <span className="truncate">Anexar imagem</span>
+              <ImageIcon className="h-3.5 w-3.5 text-primary" />
+              <span>Fotos</span>
             </button>
           </div>
+
           <button
             onClick={handleAddPost}
             disabled={(!newPostText.trim() && newPostFiles.length === 0) || isSending}
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-sm"
+            className="flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-md transition-all hover:brightness-105 disabled:opacity-50"
           >
-            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            <span>Enviar</span>
+            {isSending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            <span>Publicar</span>
           </button>
         </div>
       </div>
 
+      {/* Feed */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <span>Carregando comunidade...</span>
+        <div className="glass-card !rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Carregando postagens da comunidade...</p>
+        </div>
+      ) : posts.length === 0 ? (
+        <div className="glass-card !rounded-2xl p-12 text-center text-muted-foreground text-sm">
+          Nenhuma publicação encontrada. Seja o primeiro a compartilhar algo!
         </div>
       ) : (
-        <div className="space-y-4 overflow-x-hidden sm:space-y-5">
-          {posts.map((p) => (
-            <PostCard
-              key={p.id}
-              post={p}
-              currentUserId={user?.id}
-              onReact={toggleReaction}
-              onComment={addComment}
-              onCommentReact={toggleCommentReaction}
-              onCommentReply={addReply}
-              onDeletePost={handleDeletePost}
-              onDeleteComment={handleDeleteComment}
-            />
-          ))}
-        </div>
+        posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUserId={user?.id}
+            onReact={toggleReaction}
+            onComment={addComment}
+            onCommentReact={toggleCommentReaction}
+            onCommentReply={addReply}
+            onDeletePost={(id) => setDeleteConfirm({ open: true, type: 'post', id })}
+            onDeleteComment={(id) => setDeleteConfirm({ open: true, type: 'comment', id })}
+          />
+        ))
       )}
 
-      <AnimatePresence>
-        {storyIndex !== null && (
-          <StoryViewer stories={stories.slice(1)} startIndex={storyIndex} onClose={() => setStoryIndex(null)} />
-        )}
-      </AnimatePresence>
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteConfirm?.open}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+      >
+        <DialogContent className="glass-card max-w-sm rounded-3xl border-border/50 p-6">
+          <DialogHeader>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-destructive/10 text-destructive mb-2">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-base font-bold text-foreground">
+              Excluir {deleteConfirm?.type === 'post' ? 'publicação' : 'resposta'}?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Esta ação não pode ser desfeita e removerá o item permanentemente da comunidade.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirm(null)}
+              className="rounded-2xl text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              className="rounded-2xl text-xs"
+            >
+              Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

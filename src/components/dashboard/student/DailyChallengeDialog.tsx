@@ -51,6 +51,7 @@ export const DailyChallengeDialog = ({ open, onOpenChange, onRewardClaimed }: Da
   const [completed, setCompleted] = useState(false);
   const [lifes, setLifes] = useState(3);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -58,11 +59,12 @@ export const DailyChallengeDialog = ({ open, onOpenChange, onRewardClaimed }: Da
       setSelectedOption(null);
       setAnswered(false);
       setCompleted(false);
+      setResults([]);
       getDailyChallenges()
         .then((data) => {
-          if (data && data.challenges) {
+          if (data && Array.isArray(data.challenges) && data.challenges.length > 0) {
             setDailyData(data);
-            if (data.daily_lifes) setLifes(data.daily_lifes);
+            if (data.daily_lifes !== undefined) setLifes(data.daily_lifes);
           }
         })
         .catch((err) => {
@@ -71,7 +73,21 @@ export const DailyChallengeDialog = ({ open, onOpenChange, onRewardClaimed }: Da
     }
   }, [open]);
 
-  const currentQ = DEFAULT_QUESTIONS[currentIndex] || DEFAULT_QUESTIONS[0];
+  const questions: Question[] = (dailyData?.challenges && dailyData.challenges.length > 0)
+    ? dailyData.challenges.map((c) => {
+        const answers = c.data?.quiz_answers || [];
+        const correctIdx = answers.findIndex((a) => a.is_correct);
+        return {
+          id: c.id,
+          title: c.title || 'Desafio Diário',
+          description: c.description || '',
+          options: answers.map((a) => a.text),
+          correctIndex: correctIdx >= 0 ? correctIdx : 0,
+        };
+      })
+    : DEFAULT_QUESTIONS;
+
+  const currentQ = questions[currentIndex] || questions[0];
 
   const handleSelect = (idx: number) => {
     if (answered) return;
@@ -84,13 +100,23 @@ export const DailyChallengeDialog = ({ open, onOpenChange, onRewardClaimed }: Da
     setAnswered(true);
     setIsCorrect(correct);
 
+    const newResult = {
+      id: currentQ.id,
+      hub_challenge_id: currentQ.id,
+      isCorrect: correct,
+      time: 5,
+      attempts: 1,
+      option: currentQ.options[selectedOption],
+    };
+    setResults((prev) => [...prev, newResult]);
+
     if (!correct) {
       setLifes((l) => Math.max(0, l - 1));
     }
   };
 
   const handleNext = async () => {
-    if (currentIndex + 1 < DEFAULT_QUESTIONS.length) {
+    if (currentIndex + 1 < questions.length) {
       setCurrentIndex((i) => i + 1);
       setSelectedOption(null);
       setAnswered(false);
@@ -98,16 +124,19 @@ export const DailyChallengeDialog = ({ open, onOpenChange, onRewardClaimed }: Da
       // Finalizado
       setLoading(true);
       try {
-        await sendDailyChallenges({
-          results: [{ isCorrect: true, id: currentQ.id, time: 10, attempts: 1 } as any],
+        const res = await sendDailyChallenges({
+          results: results.length > 0 ? results : [{ id: currentQ.id, isCorrect: true, time: 5, attempts: 1 } as any],
         });
+        const coinsEarned = typeof res?.coins_earned === 'number' ? res.coins_earned : 5;
+        onRewardClaimed(coinsEarned);
+        toast.success(`Parabéns! +R$ ${coinsEarned.toFixed(2).replace('.', ',')} em moedas e +1 dia de sequência!`);
       } catch (err) {
         console.warn('Erro ao registrar desafio remoto:', err);
+        onRewardClaimed(5);
+        toast.success('Parabéns! +R$ 5,00 em moedas e +1 dia de sequência!');
       } finally {
         setLoading(false);
         setCompleted(true);
-        onRewardClaimed(5);
-        toast.success('Parabéns! +R$ 5,00 em moedas e +1 dia de sequência!');
       }
     }
   };

@@ -144,7 +144,7 @@ const SortableKanbanCard = ({
 };
 
 export const PlannerView: React.FC = () => {
-  const { user } = useUser();
+  const { user, setUser } = useUser();
   const [columns, setColumns] = useState<KanbanColumnData[]>(DEFAULT_COLUMNS);
   const [initialJson, setInitialJson] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
@@ -281,6 +281,9 @@ export const PlannerView: React.FC = () => {
       setIsSaving(true);
       const jsonStr = JSON.stringify(columns);
       await updateProfile({ kanban: jsonStr });
+      if (user) {
+        setUser({ ...user, metadata: { ...user.metadata, kanban: jsonStr } });
+      }
       setInitialJson(jsonStr);
       toast.success('Planejamento salvo com sucesso!');
     } catch (err) {

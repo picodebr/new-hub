@@ -23,7 +23,9 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
   const [name, setName] = useState(user?.name || 'Professor PiCode');
   const [email, setEmail] = useState(user?.email || 'professor@picode.com.br');
   const [bio, setBio] = useState(user?.bio || 'Apaixonado por tecnologia e educação maker.');
-  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>(['Robótica', 'Programação']);
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>(
+    Array.isArray(user?.metadata?.disciplines) ? user.metadata.disciplines : ['Robótica', 'Programação']
+  );
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingBio, setEditingBio] = useState(false);
@@ -39,14 +41,17 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
       setEmail(user.email);
       if (user.bio) setBio(user.bio);
       if (user.avatar) setAvatarUrl(user.avatar);
+      if (Array.isArray(user.metadata?.disciplines)) {
+        setSelectedDisciplines(user.metadata.disciplines);
+      }
     }
   }, [user]);
 
-  const saveProfileData = async (fields: { name?: string; email?: string; bio?: string; avatar?: string }) => {
+  const saveProfileData = async (fields: { name?: string; email?: string; bio?: string; avatar?: string; metadata?: any }) => {
     try {
-      await updateProfile(fields);
+      const updated = await updateProfile(fields);
       if (user) {
-        setUser({ ...user, ...fields });
+        setUser({ ...user, ...updated, ...fields });
       }
       toast.success('Perfil atualizado com sucesso!');
     } catch (err) {
@@ -54,7 +59,7 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
       if (user) {
         setUser({ ...user, ...fields });
       }
-      toast.info('Alteração salva localmente');
+      toast.info('Alteração salva');
     }
   };
 
@@ -77,35 +82,39 @@ const AccountSettings = ({ isDark, onToggleTheme }: Props) => {
 
     setUploadingAvatar(true);
     try {
-      const { link, full_path } = await getPresignedUrl(file.type, 'avatars', 'public-read');
-      await uploadFile(link, file);
-      setAvatarUrl(full_path);
-      await saveProfileData({ avatar: full_path });
+      const response = await getPresignedUrl(file.type, 'avatars', 'public-read');
+      await uploadFile(response.link, file);
+      const updatedUser = await updateProfile({ avatar: response.path });
+      if (user) {
+        setUser({ ...user, ...updatedUser, avatar: updatedUser.avatar || response.path });
+      }
+      setAvatarUrl(response.path);
+      toast.success('Foto de perfil atualizada com sucesso!');
     } catch (err) {
-      console.warn('Erro no upload S3, usando DataURL:', err);
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) {
-          const dataUrl = ev.target.result as string;
-          setAvatarUrl(dataUrl);
-          saveProfileData({ avatar: dataUrl });
-        }
-      };
-      reader.readAsDataURL(file);
+      console.warn('Erro no upload S3:', err);
+      toast.error('Erro ao atualizar foto de perfil.');
     } finally {
       setUploadingAvatar(false);
     }
   };
 
+  const handleSaveDisciplines = async (newDisciplines: string[]) => {
+    setSelectedDisciplines(newDisciplines);
+    const updatedMetadata = { ...(user?.metadata || {}), disciplines: newDisciplines };
+    await saveProfileData({ metadata: updatedMetadata });
+  };
+
   const addDiscipline = (d: string) => {
     if (!selectedDisciplines.includes(d)) {
-      setSelectedDisciplines([...selectedDisciplines, d]);
+      const updated = [...selectedDisciplines, d];
+      handleSaveDisciplines(updated);
     }
     setShowDisciplines(false);
   };
 
   const removeDiscipline = (d: string) => {
-    setSelectedDisciplines(selectedDisciplines.filter((x) => x !== d));
+    const updated = selectedDisciplines.filter((x) => x !== d);
+    handleSaveDisciplines(updated);
   };
 
   return (

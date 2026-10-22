@@ -8,15 +8,8 @@ interface StudentExtractProps {
   balance?: number;
 }
 
-const DEFAULT_EXTRACT: IStudentExtract[] = [
-  { label: 'Projeto Pitch Deck - Cashback', value: '0', date: new Date(), type: 'plus' },
-  { label: 'Projeto MVP - Cashback', value: '2', date: new Date(), type: 'plus' },
-  { label: 'Bônus de Desafio Diário', value: '5', date: new Date(), type: 'plus' },
-  { label: 'Compra de Componente Maker', value: '3.50', date: new Date(), type: 'minor' },
-];
-
-export const StudentExtract = ({ balance = 14874.14 }: StudentExtractProps) => {
-  const [extractList, setExtractList] = useState<IStudentExtract[]>(DEFAULT_EXTRACT);
+export const StudentExtract = ({ balance = 0 }: StudentExtractProps) => {
+  const [extractList, setExtractList] = useState<IStudentExtract[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,10 +17,13 @@ export const StudentExtract = ({ balance = 14874.14 }: StudentExtractProps) => {
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setExtractList(data);
+        } else {
+          setExtractList([]);
         }
       })
       .catch((err) => {
-        console.warn('Erro ao carregar extrato real, usando demonstrativo:', err);
+        console.warn('Erro ao carregar extrato:', err);
+        setExtractList([]);
       })
       .finally(() => setLoading(false));
   }, []);

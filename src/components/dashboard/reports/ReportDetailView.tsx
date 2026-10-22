@@ -12,13 +12,16 @@ import {
   Paperclip,
   ExternalLink,
   Loader2,
+  Network,
 } from 'lucide-react';
 import { IHubReport } from '@/_base/interfaces/report';
 import { showReport } from '@/_base/services/report';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useUser } from '@/hooks/useUser';
 
 export const ReportDetailView: React.FC = () => {
   const { reportId } = useParams<{ reportId: string }>();
+  const { chosenSchool } = useUser();
   const [report, setReport] = useState<IHubReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -122,6 +125,12 @@ export const ReportDetailView: React.FC = () => {
               <Tag className="w-3.5 h-3.5 text-primary" />
               <span>{report.context}</span>
             </div>
+            {(chosenSchool?.hub_school_group?.display_name || (chosenSchool as any)?.school_group?.display_name) && (
+              <div className="flex items-center gap-1.5">
+                <Network className="w-3.5 h-3.5 text-primary" />
+                <span>{chosenSchool?.hub_school_group?.display_name || (chosenSchool as any)?.school_group?.display_name}</span>
+              </div>
+            )}
             {report.metadata?.school_name && (
               <div className="flex items-center gap-1.5">
                 <School className="w-3.5 h-3.5 text-primary" />

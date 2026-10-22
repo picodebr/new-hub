@@ -41,9 +41,13 @@ interface Folder {
 
 interface SharedProject {
   id: string;
+  folder_id: string;
   name: string;
   sharedBy: string;
+  sharedByAvatar?: string;
   sharedAt: string;
+  mode?: string;
+  snapshot?: string;
   codePreview: string[];
 }
 
@@ -139,9 +143,13 @@ const MeusCodigosView = ({
                 setSharedProjects(
                   shared.map((p: any) => ({
                     id: p.id,
+                    folder_id: p.folder_id,
                     name: p.name,
-                    sharedBy: p.user?.display_name || 'Colega',
+                    sharedBy: p.folder?.user?.name || p.user?.display_name || 'Usuário',
+                    sharedByAvatar: p.folder?.user?.avatar,
                     sharedAt: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : 'Recente',
+                    mode: p.source_code?.mode,
+                    snapshot: p.snapshot,
                     codePreview: PLACEHOLDER_CODE,
                   }))
                 );
@@ -171,7 +179,7 @@ const MeusCodigosView = ({
 
     try {
       if (isVisionLab) {
-        const created = await createVisionLabFolder({ name } as any);
+        const created = await createVisionLabFolder(name);
         toast.success('Pasta criada com sucesso!');
         setFolders(prev => [
           ...prev,
@@ -300,7 +308,7 @@ const MeusCodigosView = ({
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.06 }}
                     whileHover={{ y: -4 }}
-                    onClick={() => navigate(`/code/shared/${project.id}`)}
+                    onClick={() => navigate(`/code/${project.folder_id || 'shared'}/${project.id}?_p=${encodeURIComponent(project.name)}`)}
                     className="glass-card rounded-3xl overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300 cursor-pointer border border-border/50 group"
                   >
                     <div className="p-3 pb-2 h-40">

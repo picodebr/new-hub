@@ -1,8 +1,16 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Lock, Award, CheckCircle2, BookOpen, Play } from 'lucide-react';
+import { ArrowLeft, Lock, Award, CheckCircle2, BookOpen, Play, Loader2 } from 'lucide-react';
 import { Course, Module } from './coursesData';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useUser } from '@/hooks/useUser';
+import { getCertificateByCourse, listUserCertificates, registerCertificate } from '@/_base/services/certificates';
+import { getPresignedUrl, uploadFile } from '@/_base/services/upload';
+import { formatShortName } from '@/_base/utils';
+import { PDFDocument, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import { toast } from 'sonner';
 
 interface Props {
   course: Course;
@@ -11,6 +19,9 @@ interface Props {
 }
 
 const ModuleList = ({ course, onBack, onSelectModule }: Props) => {
+  const { user } = useUser();
+  const [loadingCert, setLoadingCert] = useState(false);
+
   const totalLessons = course.modules.reduce((a, m) => a + m.lessons.length, 0);
   const watchedLessons = course.modules.reduce(
     (a, m) => a + m.lessons.filter((l) => l.watched).length,
@@ -18,6 +29,76 @@ const ModuleList = ({ course, onBack, onSelectModule }: Props) => {
   );
   const overallPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
   const allComplete = totalLessons > 0 && watchedLessons === totalLessons;
+
+  const handleEmitCertificate = async () => {
+    if (!allComplete || loadingCert) return;
+
+    try {
+      setLoadingCert(true);
+      toast.info('Verificando certificado...');
+
+      // 1. Check if user already has certificate for this course
+      const userCerts = await listUserCertificates().catch(() => []);
+      const existing = (userCerts || []).find((c) => c.hub_course_id === course.id);
+      if (existing?.link) {
+        window.open(existing.link, '_blank');
+        toast.success('Certificado aberto!');
+        return;
+      }
+
+      // 2. Fetch certificate template
+      const templateRes = await getCertificateByCourse(course.id);
+      const template = templateRes?.templates?.[0];
+      if (!template?.link) {
+        toast.error('Template de certificado não encontrado para este curso.');
+        return;
+      }
+
+      toast.info('Gerando certificado em PDF...');
+      const response = await fetch(template.link);
+      const existingPdfBytes = await response.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(existingPdfBytes);
+      pdfDoc.registerFontkit(fontkit);
+
+      const fontRes = await fetch('/fonts/noteworthy.ttf');
+      const fontBytes = await fontRes.arrayBuffer();
+      const noteWorthyFont = await pdfDoc.embedFont(fontBytes);
+
+      const pages = pdfDoc.getPages();
+      const firstPage = pages[0];
+      const text = formatShortName(user?.name || '', true);
+      const fontSize = 40;
+      const maxWidth = 612;
+      const textWidth = noteWorthyFont.widthOfTextAtSize(text, fontSize);
+      const centeredX = 115 + (maxWidth - textWidth) / 2;
+
+      firstPage.drawText(text, {
+        x: centeredX,
+        y: 298,
+        size: fontSize,
+        font: noteWorthyFont,
+        color: rgb(0.122, 0.114, 0.239),
+        maxWidth,
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
+      const presigned = await getPresignedUrl('application/pdf', 'certificates');
+      const filename = presigned.path.split('/').pop() || `certificado_${course.id}.pdf`;
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      await uploadFile(presigned.link, file);
+
+      const newCert = await registerCertificate(course.id, presigned.path);
+      const downloadUrl = newCert?.link || URL.createObjectURL(blob);
+      window.open(downloadUrl, '_blank');
+      toast.success('Certificado gerado com sucesso!');
+    } catch (err: any) {
+      console.error('Erro ao emitir certificado:', err);
+      toast.error('Erro ao emitir certificado: ' + (err?.message || 'Falha no processamento.'));
+    } finally {
+      setLoadingCert(false);
+    }
+  };
 
   return (
     <motion.div
@@ -46,15 +127,24 @@ const ModuleList = ({ course, onBack, onSelectModule }: Props) => {
               <motion.button
                 whileHover={allComplete ? { scale: 1.05 } : {}}
                 whileTap={allComplete ? { scale: 0.95 } : {}}
-                disabled={!allComplete}
+                disabled={!allComplete || loadingCert}
+                onClick={handleEmitCertificate}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 ${
                   allComplete
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40'
                     : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
                 }`}
               >
-                {allComplete ? <Award className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                <span className="hidden sm:inline">Emitir Certificado</span>
+                {loadingCert ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : allComplete ? (
+                  <Award className="w-4 h-4" />
+                ) : (
+                  <Lock className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {loadingCert ? 'Emitindo...' : 'Emitir Certificado'}
+                </span>
               </motion.button>
             </TooltipTrigger>
             {!allComplete && (

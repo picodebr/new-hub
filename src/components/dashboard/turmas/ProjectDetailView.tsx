@@ -27,6 +27,7 @@ import {
   Sparkles,
   Search,
   Check,
+  Wrench,
 } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
 import {
@@ -164,8 +165,39 @@ const ProjectDetailView = ({ onBack }: Props) => {
     };
   }, [routeProjectId]);
 
-  const canEdit = user?.id === project?.user_id;
+  // Tools / Materials
+  const [newTool, setNewTool] = useState('');
+
+  const canEdit = user?.id === project?.user_id || user?.role === 'master';
   const isFactoryProject = !project?.educator?.id && !!project?.project_id;
+
+  const handleAddTool = () => {
+    if (!newTool.trim() || !project) return;
+    const currentTools = project.metadata?.tools || [];
+    if (currentTools.includes(newTool.trim())) {
+      toast.error('Este material já foi adicionado.');
+      return;
+    }
+    setProject({
+      ...project,
+      metadata: {
+        ...project.metadata,
+        tools: [...currentTools, newTool.trim()],
+      },
+    });
+    setNewTool('');
+  };
+
+  const handleRemoveTool = (tool: string) => {
+    if (!project) return;
+    setProject({
+      ...project,
+      metadata: {
+        ...project.metadata,
+        tools: (project.metadata?.tools || []).filter((t) => t !== tool),
+      },
+    });
+  };
 
   const needSave = useMemo<boolean>(() => {
     if (!project || !savedProject) return false;
@@ -690,6 +722,79 @@ const ProjectDetailView = ({ onBack }: Props) => {
                   className="rounded-xl resize-none disabled:opacity-80 disabled:bg-muted/30"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Card: Materiais e Ferramentas */}
+          <div className="p-5 rounded-2xl border border-border/70 bg-card shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground text-base">Materiais e Ferramentas</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Recursos e componentes necessários para a execução deste projeto
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold text-muted-foreground bg-muted/40 px-2.5 py-1 rounded-full">
+                {(project.metadata?.tools || []).length} {(project.metadata?.tools || []).length === 1 ? 'item' : 'itens'}
+              </span>
+            </div>
+
+            {canEdit && (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Adicionar novo material ou ferramenta..."
+                  value={newTool}
+                  onChange={(e) => setNewTool(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTool();
+                    }
+                  }}
+                  className="rounded-xl text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddTool}
+                  disabled={!newTool.trim()}
+                  className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-md hover:brightness-105 transition-all disabled:opacity-50 shrink-0"
+                  title="Adicionar material"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+              {(project.metadata?.tools || []).map((tool, idx) => (
+                <div
+                  key={`${tool}-${idx}`}
+                  className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/10 hover:border-border transition-colors"
+                >
+                  <span className="text-sm font-medium text-foreground">{tool}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTool(tool)}
+                      className="text-muted-foreground/50 hover:text-destructive p-1 rounded-lg transition-colors"
+                      title="Remover material"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {(project.metadata?.tools || []).length === 0 && (
+                <p className="text-xs text-muted-foreground italic text-center py-6">
+                  Nenhum material cadastrado para este projeto.
+                </p>
+              )}
             </div>
           </div>
 

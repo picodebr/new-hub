@@ -11,6 +11,7 @@ import ForgotPassword from '@/components/auth/ForgotPassword';
 import ResetCodeInput from '@/components/auth/ResetCodeInput';
 import NewPassword from '@/components/auth/NewPassword';
 import PasswordResetSuccess from '@/components/auth/PasswordResetSuccess';
+import SupportForm from '@/components/auth/SupportForm';
 
 type Step =
   | 'login'
@@ -22,7 +23,8 @@ type Step =
   | 'forgot'
   | 'reset-code'
   | 'new-password'
-  | 'reset-success';
+  | 'reset-success'
+  | 'support';
 
 const Index = () => {
   const [step, setStep] = useState<Step>('login');
@@ -74,6 +76,7 @@ const Index = () => {
               key="login"
               onSignUp={() => setStep('profile')}
               onForgotPassword={() => setStep('forgot')}
+              onSupport={() => setStep('support')}
             />
           )}
           {step === 'profile' && (
@@ -111,7 +114,12 @@ const Index = () => {
 
           {/* Forgot password flow */}
           {step === 'forgot' && (
-            <ForgotPassword key="forgot" onBack={goToLogin} onCodeSent={handleCodeSent} />
+            <ForgotPassword
+              key="forgot"
+              onBack={goToLogin}
+              onCodeSent={handleCodeSent}
+              onSupport={() => setStep('support')}
+            />
           )}
           {step === 'reset-code' && (
             <ResetCodeInput
@@ -131,6 +139,11 @@ const Index = () => {
           )}
           {step === 'reset-success' && (
             <PasswordResetSuccess key="reset-success" onGoToLogin={goToLogin} />
+          )}
+
+          {/* Support flow */}
+          {step === 'support' && (
+            <SupportForm key="support" onBack={goToLogin} />
           )}
         </AnimatePresence>
       </div>

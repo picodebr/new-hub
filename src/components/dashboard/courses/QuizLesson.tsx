@@ -5,21 +5,34 @@ import { Lesson, Module, Course } from './coursesData';
 import { sendModuleLesson } from '@/_base/services/course';
 import { toast } from 'sonner';
 
+import { IHubChallenge } from '@/_base/interfaces/challenges';
+import { ISendQuizParams } from '@/_base/interfaces/challenges/IQuizChallenge';
+
 interface Props {
   course: Course;
   module: Module;
   lesson: Lesson;
+  challenge?: IHubChallenge;
   onBack: () => void;
   onMarkWatched: (lessonId: string) => void;
+  onAnswer?: (answer: ISendQuizParams) => void;
 }
 
-const QuizLesson = ({ course, module, lesson, onBack, onMarkWatched }: Props) => {
-  const quiz = lesson.quiz_data || {
+const QuizLesson = ({ course, module, lesson, challenge, onBack, onMarkWatched, onAnswer }: Props) => {
+  const challengeAnswers = challenge?.data?.quiz_answers;
+  const quiz = challengeAnswers && challengeAnswers.length > 0 ? {
+    question: challenge.title || challenge.description || 'Pergunta',
+    options: challengeAnswers.map((a) => a.text),
+    correctIndex: challengeAnswers.findIndex((a) => a.is_correct) >= 0 ? challengeAnswers.findIndex((a) => a.is_correct) : 0,
+    explanation: challenge.description || '',
+  } : lesson.quiz_data || {
     question: 'Qual é o componente responsável pelo processamento principal no microcontrolador?',
     options: ['Processador / CPU', 'Resistor', 'Capacitor', 'Diodo'],
     correctIndex: 0,
     explanation: 'A CPU executa as instruções do programa compilado.',
   };
+
+  const challengeId = challenge?.id || lesson.challenge_data?.id || lesson.id;
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
@@ -38,6 +51,15 @@ const QuizLesson = ({ course, module, lesson, onBack, onMarkWatched }: Props) =>
     setAnswered(true);
     setIsCorrect(correct);
 
+    const answerPayload: ISendQuizParams = {
+      hub_challenge_id: challengeId,
+      option: quiz.options[selectedOption],
+    };
+
+    if (onAnswer) {
+      onAnswer(answerPayload);
+    }
+
     if (correct) {
       setSubmitting(true);
       try {
@@ -45,7 +67,7 @@ const QuizLesson = ({ course, module, lesson, onBack, onMarkWatched }: Props) =>
           course_id: course.id,
           module_id: module.id,
           lesson_id: lesson.id,
-          answers: [{ id: lesson.id, isCorrect: true, attempts, time: 20 } as any],
+          answers: [answerPayload],
         });
       } catch (err) {
         console.warn('Erro ao enviar progresso remoto:', err);

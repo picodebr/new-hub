@@ -136,13 +136,7 @@ const RegistrationForm = ({
       toast.success('Conta criada com sucesso!');
       onSubmit();
     } catch (err: any) {
-      // Se offline/demonstração, avisa e simula sucesso
       console.warn('Erro ao criar conta via API:', err);
-      if (primaryCode === '1234') {
-        toast.info('Modo demonstração: cadastro concluído localmente');
-        onSubmit();
-        return;
-      }
       const msg = err?.response?.data?.message || err?.message || 'Erro ao realizar cadastro';
       toast.error(msg);
     } finally {

@@ -18,12 +18,17 @@ import { Lesson, Module, Course } from './coursesData';
 import { sendModuleLesson } from '@/_base/services/course';
 import { toast } from 'sonner';
 
+import { IHubChallenge } from '@/_base/interfaces/challenges';
+import { ISendAlgorithmParams } from '@/_base/interfaces/challenges/IAlgorithmChallenge';
+
 interface Props {
   course: Course;
   module: Module;
   lesson: Lesson;
+  challenge?: IHubChallenge;
   onBack: () => void;
   onMarkWatched: (lessonId: string) => void;
+  onAnswer?: (answer: ISendAlgorithmParams) => void;
 }
 
 interface AlgorithmItem {
@@ -31,7 +36,9 @@ interface AlgorithmItem {
   text: string;
 }
 
-export const AlgorithmLesson = ({ course, module, lesson, onBack, onMarkWatched }: Props) => {
+export const AlgorithmLesson = ({ course, module, lesson, challenge, onBack, onMarkWatched, onAnswer }: Props) => {
+  const challengeId = challenge?.id || lesson.challenge_data?.id || lesson.id;
+
   // Default steps if challenge data is empty
   const defaultSteps = [
     'Conectar o sensor ultrassônico aos pinos digitais',
@@ -42,7 +49,9 @@ export const AlgorithmLesson = ({ course, module, lesson, onBack, onMarkWatched 
   ];
 
   const rawSteps: string[] =
-    (lesson.challenge_data?.data as any)?.algorithm_sequence || defaultSteps;
+    challenge?.data?.algorithm_sequence ||
+    (lesson.challenge_data?.data as any)?.algorithm_sequence ||
+    defaultSteps;
 
   // Expected sequence is the original order; we shuffle available blocks initially
   const [available, setAvailable] = useState<AlgorithmItem[]>(() => {
@@ -115,6 +124,15 @@ export const AlgorithmLesson = ({ course, module, lesson, onBack, onMarkWatched 
     setVerified(true);
     setIsCorrect(correct);
 
+    const answerPayload: ISendAlgorithmParams = {
+      hub_challenge_id: challengeId,
+      sequence: currentTexts,
+    };
+
+    if (onAnswer) {
+      onAnswer(answerPayload);
+    }
+
     if (correct) {
       setSubmitting(true);
       try {
@@ -122,14 +140,7 @@ export const AlgorithmLesson = ({ course, module, lesson, onBack, onMarkWatched 
           course_id: course.id,
           module_id: module.id,
           lesson_id: lesson.id,
-          answers: [
-            {
-              hub_challenge_id: lesson.id,
-              sequence: currentTexts,
-              isCorrect: true,
-              attempts,
-            } as any,
-          ],
+          answers: [answerPayload],
         });
       } catch (err) {
         console.warn('Erro ao registrar resposta do algoritmo:', err);

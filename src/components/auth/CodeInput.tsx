@@ -72,12 +72,6 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
         setTimeout(() => setShake(false), 500);
       }
     } catch (err: any) {
-      // Dev/fallback se backend offline
-      if (fullCode === '1234') {
-        toast.info('Modo Dev: Código 1234 aceito como demonstração');
-        onSubmit(fullCode);
-        return;
-      }
       const msg = err?.response?.data?.message || 'Código inválido ou não encontrado.';
       setError(msg);
       setShake(true);
@@ -154,11 +148,6 @@ const CodeInput = ({ profile, onBack, onSubmit }: CodeInputProps) => {
       >
         {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verificar código'}
       </button>
-
-      {/* Dica para dev */}
-      <p className="text-[11px] text-muted-foreground/70 text-center mt-4">
-        Dica de demonstração: use o código <span className="font-mono font-semibold">1234</span>
-      </p>
     </motion.div>
   );
 };

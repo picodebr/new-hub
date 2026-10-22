@@ -24,6 +24,9 @@ interface Project {
   createdAt: string;
   codePreview: string[];
   isPublished?: boolean;
+  privacy_type?: string;
+  share_links?: any[];
+  raw?: any;
 }
 
 interface FolderDetailViewProps {
@@ -90,6 +93,9 @@ const FolderDetailView = ({
               createdAt: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : 'Recente',
               codePreview: ['// Modelo de Visão Computacional', `// ${p.name}`, 'Classes: ' + ((p.labels || []).join(', ') || 'Nenhuma'), 'void setup() {}'],
               isPublished: p.is_published,
+              privacy_type: p.privacy_type,
+              share_links: p.share_links || [],
+              raw: p,
             }));
             setProjects(mapped);
           }
@@ -108,6 +114,9 @@ const FolderDetailView = ({
                 ? p.source_code.code.split('\n').slice(0, 10)
                 : DEFAULT_CODE_PREVIEW,
               isPublished: p.is_published,
+              privacy_type: p.privacy_type,
+              share_links: p.share_links || [],
+              raw: p,
             }));
             setProjects(mapped);
           }
@@ -349,7 +358,7 @@ const FolderDetailView = ({
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[11px] text-muted-foreground/70 truncate">{project.createdAt}</p>
                   {(() => {
-                    const isPrivate = !!project.isPublished;
+                    const isPrivate = project.privacy_type === 'private' || (!project.isPublished && project.privacy_type !== 'public');
                     return (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
@@ -357,7 +366,7 @@ const FolderDetailView = ({
                             ? 'bg-foreground/10 text-foreground border-foreground/20'
                             : 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400'
                         }`}
-                        title={isPrivate ? 'Projeto publicado — visível apenas para você' : 'Projeto público — visível para todos'}
+                        title={isPrivate ? 'Projeto privado — visível apenas para você' : 'Projeto público — visível para todos'}
                       >
                         {isPrivate ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
                         {isPrivate ? 'PRIVADO' : 'PÚBLICO'}
@@ -407,10 +416,15 @@ const FolderDetailView = ({
           open={!!shareProject}
           onOpenChange={(open) => !open && setShareProject(null)}
           projectName={shareProject.name}
+          targetProject={shareProject.raw || shareProject}
           initialIsPublished={shareProject.isPublished}
-          onSavePermissions={(newPermissions, isPublished) => {
+          onSavePermissions={(newPermissions, isPublished, privacyType) => {
             setProjects(prev =>
-              prev.map(p => p.id === shareProject.id ? { ...p, isPublished } : p)
+              prev.map(p =>
+                p.id === shareProject.id
+                  ? { ...p, isPublished, privacy_type: privacyType || (isPublished ? 'public' : 'private') }
+                  : p
+              )
             );
           }}
         />

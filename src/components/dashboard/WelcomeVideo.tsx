@@ -1,5 +1,8 @@
 import { motion } from 'framer-motion';
-import { Rocket, Play } from 'lucide-react';
+import { Rocket } from 'lucide-react';
+
+const VIDEO_URL =
+  'https://picode-public.s3.amazonaws.com/hub-videos/Apresenta%C3%A7%C3%A3o+professores+com+intro+.mp4';
 
 const WelcomeVideo = () => (
   <motion.div
@@ -15,16 +18,16 @@ const WelcomeVideo = () => (
       <span className="text-base font-semibold text-foreground sm:text-lg">Boas-vindas à PiCode</span>
     </div>
 
-    <div className="group relative flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-accent to-primary/5">
-      <div className="absolute inset-0 flex items-center justify-center">
-        <Rocket className="h-24 w-24 text-primary/10" />
-      </div>
-      <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/25 transition-transform duration-200 group-hover:scale-110">
-        <Play className="ml-0.5 h-6 w-6 text-primary-foreground" />
-      </div>
-      <span className="absolute bottom-3 left-3 rounded-lg bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm">
-        0:00 / 1:08
-      </span>
+    <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black/90 shadow-inner">
+      <video
+        src={VIDEO_URL}
+        controls
+        preload="metadata"
+        className="h-full w-full object-contain"
+        playsInline
+      >
+        Seu navegador não suporta reprodução de vídeo.
+      </video>
     </div>
   </motion.div>
 );

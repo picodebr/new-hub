@@ -128,7 +128,7 @@ const ProjectsTab = ({ turma, onReloadClass }: Props) => {
           {sortedProjects.map((project, i) => {
             const rawStatus = (project.status || 'stopped') as HubStatus;
             const statusInfo = statusColorStyles[rawStatus] || statusColorStyles.stopped;
-            const canEditStatus = project.user_id === user?.id;
+            const canEditStatus = project.user_id === user?.id || user?.role === 'master';
             const isFactoryProject = !project.educator?.id && !!project.project_id;
             const thumbnail = project.project?.metadata?.thumbnail || '/images/book.svg';
 

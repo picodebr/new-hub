@@ -1,6 +1,7 @@
-import { PostReactionKey } from './PostReaction';
+import { PostReactionKey, PostReaction } from './PostReaction';
 
 export interface IUpdateHubCommunityPostParams {
   id: string;
-  reaction: PostReactionKey;
+  reaction?: PostReactionKey;
+  reactions?: PostReaction | any;
 }

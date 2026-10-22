@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { FolderOpen, FileCode2, ArrowRight, Loader2 } from 'lucide-react';
-import { getCodeProjects } from '@/_base/services/codeProject';
-import { ICodeProject } from '@/_base/interfaces/codeProject/IProject';
+import { FolderOpen, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { getMyProjects } from '@/_base/services/project/getMyProjects';
+import { IProject } from '@/_base/interfaces/project';
+import { useUser } from '@/hooks/useUser';
 
 interface ProjectItem {
   id: string;
@@ -10,15 +12,6 @@ interface ProjectItem {
   date: string;
   accent: string;
 }
-
-const DEFAULT_PROJECTS: ProjectItem[] = [
-  { id: '1', name: 'Inteligência Energética', date: '08/04/2026', accent: 'hsl(211 100% 50%)' },
-  { id: '2', name: 'Outdoor', date: '08/04/2026', accent: 'hsl(280 80% 60%)' },
-  { id: '3', name: 'Pitch Deck', date: '07/04/2026', accent: 'hsl(32 95% 55%)' },
-  { id: '4', name: 'MVP', date: '24/03/2026', accent: 'hsl(160 70% 45%)' },
-  { id: '5', name: 'Descobrimento do Brasil', date: '06/03/2026', accent: 'hsl(0 80% 60%)' },
-  { id: '6', name: '60+', date: '06/03/2026', accent: 'hsl(250 75% 60%)' },
-];
 
 const ACCENT_COLORS = [
   'hsl(211 100% 50%)',
@@ -30,28 +23,42 @@ const ACCENT_COLORS = [
 ];
 
 const RecentProjects = () => {
-  const [projectList, setProjectList] = useState<ProjectItem[]>(DEFAULT_PROJECTS);
+  const navigate = useNavigate();
+  const { chosenSchool, user } = useUser();
+  const [projectList, setProjectList] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const activeSchoolId = chosenSchool?.hub_school_id || user?.chosen_school_id || '';
+
   useEffect(() => {
-    getCodeProjects()
+    if (!activeSchoolId || activeSchoolId === 'default') {
+      setProjectList([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    getMyProjects(activeSchoolId)
       .then((res) => {
-        if (res && Array.isArray(res.results) && res.results.length > 0) {
+        if (Array.isArray(res) && res.length > 0) {
           setProjectList(
-            res.results.slice(0, 6).map((p: ICodeProject, i: number) => ({
+            res.slice(0, 6).map((p: IProject, i: number) => ({
               id: p.id,
-              name: p.name || (p as any).title || 'Projeto sem nome',
+              name: p.title || p.name || 'Projeto sem título',
               date: new Date(p.updated_at || p.created_at).toLocaleDateString('pt-BR'),
               accent: ACCENT_COLORS[i % ACCENT_COLORS.length],
             }))
           );
+        } else {
+          setProjectList([]);
         }
       })
       .catch((err) => {
-        console.warn('Usando projetos demonstrativos:', err);
+        console.warn('Erro ao carregar projetos pedagógicos:', err);
+        setProjectList([]);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeSchoolId]);
 
   return (
     <motion.div
@@ -67,7 +74,10 @@ const RecentProjects = () => {
           </div>
           <h2 className="text-[15px] font-semibold text-foreground tracking-tight">Meus Projetos Recentes</h2>
         </div>
-        <button className="group flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80">
+        <button
+          onClick={() => navigate('/classes')}
+          className="group flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+        >
           Ver todos
           <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </button>
@@ -77,11 +87,22 @@ const RecentProjects = () => {
         <div className="flex items-center justify-center py-10">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
+      ) : projectList.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 py-10 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60 text-muted-foreground mb-3">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <p className="text-sm font-medium text-foreground">Nenhum projeto pedagógico encontrado</p>
+          <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+            Crie novos projetos acessando suas turmas na aba "Turmas".
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {projectList.map((p, i) => (
             <motion.button
               key={p.id}
+              onClick={() => navigate(`/projects/${p.id}`)}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.04 * i + 0.2, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
@@ -100,7 +121,7 @@ const RecentProjects = () => {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105"
                 style={{ backgroundColor: `${p.accent}15` }}
               >
-                <FileCode2 style={{ width: 18, height: 18, color: p.accent }} />
+                <FolderOpen style={{ width: 18, height: 18, color: p.accent }} />
               </div>
 
               {/* Text */}
